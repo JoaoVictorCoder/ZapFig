@@ -14,6 +14,13 @@ set(WEBP_BUILD_EXTRAS OFF CACHE BOOL "" FORCE)
 set(WEBP_BUILD_LIBWEBPMUX ON CACHE BOOL "" FORCE)
 add_subdirectory(libwebp EXCLUDE_FROM_ALL)
 
-add_library(zapfignative SHARED webpanim.c webpdecode.c)
-target_link_libraries(zapfignative libwebpmux webpdemux webp jnigraphics log)
+# libopus (BSD) para o som das figurinhas
+set(OPUS_BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
+set(OPUS_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+set(OPUS_INSTALL_PKG_CONFIG_MODULE OFF CACHE BOOL "" FORCE)
+set(OPUS_INSTALL_CMAKE_CONFIG_MODULE OFF CACHE BOOL "" FORCE)
+add_subdirectory(opus EXCLUDE_FROM_ALL)
+
+add_library(zapfignative SHARED webpanim.c webpdecode.c oggopus.c oggopus_jni.c)
+target_link_libraries(zapfignative libwebpmux webpdemux webp opus jnigraphics log)
 target_link_options(zapfignative PRIVATE "-Wl,-z,max-page-size=16384")

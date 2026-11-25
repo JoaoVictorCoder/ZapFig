@@ -4,15 +4,13 @@ import android.media.AudioFormat
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
-import android.media.MediaMuxer
-import android.os.Build
 import java.io.File
 import java.nio.ByteOrder
 
 /**
  * Som para figurinha com áudio: decodifica o áudio de qualquer mídia (vídeo,
  * áudio, mensagem de voz), corta nos primeiros [maxSeconds], converte para
- * mono 48 kHz e codifica em OGG Opus, o formato que o WhatsApp espera.
+ * mono 48 kHz e codifica em OGG Opus (libopus), o formato que o WhatsApp espera.
  */
 object AudioExtractor {
 
@@ -21,19 +19,14 @@ object AudioExtractor {
 
     /** Devolve os bytes do OGG, ou um array vazio se a mídia não tiver som. */
     fun toOggOpus(media: ByteArray, maxSeconds: Int, cacheDir: File): ByteArray {
-        if (Build.VERSION.SDK_INT < 29) throw IllegalStateException("figurinha com som precisa do Android 10 ou mais novo")
         val input = File.createTempFile("snd", ".bin", cacheDir)
-        val output = File.createTempFile("snd", ".ogg", cacheDir)
         try {
             input.writeBytes(media)
             val pcm = decodeMono(input, maxSeconds) ?: return ByteArray(0)
             if (pcm.first.isEmpty()) return ByteArray(0)
-            val resampled = resample(pcm.first, pcm.second, RATE)
-            encodeOpus(resampled, output)
-            return output.readBytes()
+            return OpusOgg.encode(resample(pcm.first, pcm.second, RATE))
         } finally {
             input.delete()
-            output.delete()
         }
     }
 
@@ -134,64 +127,6 @@ object AudioExtractor {
             dst[i] = (a + (b - a) * frac).toInt().toShort()
         }
         return dst
-    }
-
-    private fun encodeOpus(pcm: ShortArray, out: File) {
-        val fmt = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_OPUS, RATE, 1).apply {
-            setInteger(MediaFormat.KEY_BIT_RATE, 64_000)
-        }
-        val enc = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_OPUS)
-        enc.configure(fmt, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-        enc.start()
-        val muxer = MediaMuxer(out.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_OGG)
-        var track = -1
-        var started = false
-        val info = MediaCodec.BufferInfo()
-        var fed = 0
-        var inputDone = false
-        val deadline = System.currentTimeMillis() + 30_000
-        try {
-            while (true) {
-                if (System.currentTimeMillis() > deadline) throw IllegalStateException("codificação Opus travou")
-                if (!inputDone) {
-                    val i = enc.dequeueInputBuffer(TIMEOUT_US)
-                    if (i >= 0) {
-                        val buf = enc.getInputBuffer(i)!!.order(ByteOrder.nativeOrder())
-                        buf.clear()
-                        val ptsUs = fed * 1_000_000L / RATE
-                        // blocos de 20 ms (960 amostras), o tamanho de quadro do Opus
-                        val room = (buf.capacity() / 2 / 960) * 960
-                        val count = minOf(room.coerceAtLeast(960), pcm.size - fed)
-                        if (count <= 0) {
-                            enc.queueInputBuffer(i, 0, 0, ptsUs, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
-                            inputDone = true
-                        } else {
-                            buf.asShortBuffer().put(pcm, fed, count)
-                            enc.queueInputBuffer(i, 0, count * 2, ptsUs, 0)
-                            fed += count
-                        }
-                    }
-                }
-                val o = enc.dequeueOutputBuffer(info, TIMEOUT_US)
-                if (o == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                    track = muxer.addTrack(enc.outputFormat); muxer.start(); started = true
-                } else if (o >= 0) {
-                    val buf = enc.getOutputBuffer(o)!!
-                    if (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0) info.size = 0
-                    if (info.size > 0 && started) {
-                        buf.position(info.offset); buf.limit(info.offset + info.size)
-                        muxer.writeSampleData(track, buf, info)
-                    }
-                    enc.releaseOutputBuffer(o, false)
-                    if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) break
-                }
-            }
-        } finally {
-            runCatching { enc.stop() }
-            enc.release()
-            if (started) runCatching { muxer.stop() }
-            muxer.release()
-        }
     }
 
     /** Lista de shorts que cresce sem boxing. */
