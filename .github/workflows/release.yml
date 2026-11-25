@@ -27,6 +27,10 @@ jobs:
           java-version: "17"
 
       - uses: android-actions/setup-android@v3
+        with:
+          # o padrão tenta instalar o pacote "tools", que não existe mais
+          packages: "platform-tools"
+          log-accepted-android-sdk-licenses: false
 
       - name: Instalar NDK e CMake
         run: sdkmanager "ndk;27.2.12479018" "cmake;3.22.1" "platforms;android-35" "build-tools;35.0.0"
