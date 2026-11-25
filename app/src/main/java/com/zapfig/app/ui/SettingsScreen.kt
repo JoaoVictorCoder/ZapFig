@@ -124,7 +124,7 @@ fun SettingsScreen(ui: UiState, prefs: Prefs, modifier: Modifier, onLoggedOut: (
         Section {
             Text("Duração máxima: ${seconds.toInt()} s")
             Slider(seconds, { seconds = it }, valueRange = 1f..8f, steps = 6,
-                onValueChangeFinished = { prefs.maxSeconds = seconds.toInt() })
+                onValueChangeFinished = { prefs.maxSeconds = seconds.toInt(); BotService.pushConfig(ctx) })
             Text("Quadros por segundo: ${fps.toInt()}")
             Slider(fps, { fps = it }, valueRange = 5f..15f, steps = 9,
                 onValueChangeFinished = { prefs.fps = fps.toInt() })

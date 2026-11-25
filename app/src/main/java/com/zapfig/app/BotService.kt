@@ -15,6 +15,7 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
 import android.service.quicksettings.TileService
+import com.zapfig.app.media.AudioExtractor
 import com.zapfig.app.media.CropMode
 import com.zapfig.app.media.GifMaker
 import com.zapfig.app.media.StickerMaker
@@ -47,7 +48,7 @@ class BotService : Service() {
         /** Reenvia pacote/autor/auto-conversão ao motor. Funciona ligado ou desligado. */
         fun pushConfig(ctx: Context) {
             val p = Prefs(ctx)
-            Bot.configure(p.pack, p.author, p.autoImage, p.autoGif)
+            Bot.configure(p.pack, p.author, p.autoImage, p.autoGif, p.maxSeconds.toLong())
         }
     }
 
@@ -93,6 +94,7 @@ class BotService : Service() {
                 "text" -> maker.text(arg)
                 "toimage" -> maker.toImage(data!!)
                 "togif" -> GifMaker.fromAnimatedWebP(data!!, cacheDir)
+                "audio" -> AudioExtractor.fromVideo(data!!, prefs.maxSeconds, cacheDir)
                 else -> throw IllegalArgumentException("operação desconhecida: $op")
             }
         }

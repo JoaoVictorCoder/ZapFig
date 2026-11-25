@@ -96,6 +96,8 @@ const helpText = `🧩 *ZapFig: comandos*
 🎞️ Mande um *GIF* → figurinha animada
 🎬 *Vídeo* com legenda */s* → figurinha animada (até 8s)
 
+🔊 Vídeo com legenda */sa* → figurinha animada *com o som* do vídeo
+🎵 Responda um áudio com */sa* → coloca o som na última figurinha
 📐 Legenda */s2* → figurinha esticada, quadrado perfeito (sem bordas)
 ↩️ Responda uma foto/vídeo com */s* ou */s2* → converte
 ↩️ Responda uma figurinha com */img* → vira imagem (ou GIF, se for animada)
@@ -109,6 +111,7 @@ type mediaJob struct {
 	download whatsmeow.DownloadableMessage
 	size     uint64
 	fit      string // "" = ajuste dos Ajustes; "stretch" = quadrado perfeito (/s2)
+	sound    bool   // /sa: manda o som do vídeo junto com a figurinha
 }
 
 func imageJob(img *waE2E.ImageMessage, fit string) *mediaJob {
@@ -126,11 +129,23 @@ func fitFor(cmd string) (fit string, ok bool) {
 		return "", true
 	case "s2", "f2", "fig2", "quadrado":
 		return "stretch", true
+	case "sa", "som", "audio", "áudio":
+		return "", true
 	}
 	return "", false
 }
 
 // isAnimatedWebP: chunk VP8X com a flag de animação (0x02).
+func isSoundCmd(cmd string) bool {
+	return cmd == "sa" || cmd == "som" || cmd == "audio" || cmd == "áudio"
+}
+
+// Última figurinha enviada: /sa respondendo um áudio coloca som nela.
+var (
+	lastMu      sync.Mutex
+	lastSticker *waE2E.StickerMessage
+)
+
 func isAnimatedWebP(b []byte) bool {
 	return len(b) > 21 && string(b[0:4]) == "RIFF" && string(b[12:16]) == "VP8X" && b[20]&0x02 != 0
 }
@@ -152,6 +167,10 @@ func process(evt *events.Message) {
 		if isCmd && cmd == "n" {
 			return
 		}
+		if isCmd && isSoundCmd(cmd) {
+			reply(ctx, cli, evt, "🔇 Foto não tem som. Faça a figurinha e depois responda um áudio com /sa.")
+			return
+		}
 		if fit, ok := fitFor(cmd); isCmd && ok {
 			makeAndSend(ctx, cli, evt, imageJob(img, fit))
 		} else if !isCmd && c.autoImage {
@@ -166,7 +185,9 @@ func process(evt *events.Message) {
 			return
 		}
 		if fit, ok := fitFor(cmd); isCmd && ok {
-			makeAndSend(ctx, cli, evt, videoJob(v, fit))
+			job := videoJob(v, fit)
+			job.sound = isSoundCmd(cmd)
+			makeAndSend(ctx, cli, evt, job)
 		} else if !isCmd && v.GetGifPlayback() && c.autoGif {
 			makeAndSend(ctx, cli, evt, videoJob(v, ""))
 		}
@@ -203,7 +224,25 @@ func process(evt *events.Message) {
 			fail(ctx, cli, evt, "gerar figurinha de texto", err)
 			return
 		}
-		sendSticker(ctx, cli, evt, webp, false)
+		sendSticker(ctx, cli, evt, webp, false, nil)
+	case "sa", "som", "audio", "áudio":
+		switch {
+		case quoted.GetVideoMessage() != nil:
+			job := videoJob(quoted.GetVideoMessage(), "")
+			job.sound = true
+			makeAndSend(ctx, cli, evt, job)
+		case quoted.GetAudioMessage() != nil:
+			lastMu.Lock()
+			st := lastSticker
+			lastMu.Unlock()
+			if st == nil {
+				reply(ctx, cli, evt, "🎵 Faça uma figurinha primeiro e depois responda um áudio com /sa.")
+				return
+			}
+			sendStickerWithAudio(ctx, cli, evt, st, audioFrom(quoted.GetAudioMessage()))
+		default:
+			reply(ctx, cli, evt, "🎵 Responda um *vídeo* com /sa (usa o som dele) ou um *áudio* com /sa (coloca o som na última figurinha).")
+		}
 	case "s", "f", "fig", "sticker", "s2", "f2", "fig2", "quadrado":
 		fit, _ := fitFor(cmd)
 		switch {
@@ -251,7 +290,7 @@ func process(evt *events.Message) {
 		if !hasAuthor {
 			author = c.author
 		}
-		Configure(pack, author, c.autoImage, c.autoGif)
+		Configure(pack, author, c.autoImage, c.autoGif, c.maxSeconds)
 		if cb != nil {
 			cb.OnConfigChanged(pack, author)
 		}
@@ -286,7 +325,59 @@ func makeAndSend(ctx context.Context, cli *whatsmeow.Client, evt *events.Message
 		return
 	}
 	logf("Convertido em %.1fs", time.Since(t0).Seconds())
-	sendSticker(ctx, cli, evt, webp, job.op == "video")
+	var audio *waE2E.AudioMessage
+	if job.sound {
+		audio = videoAudio(ctx, cli, evt, data)
+		if audio == nil {
+			return
+		}
+	}
+	sendSticker(ctx, cli, evt, webp, job.op == "video", audio)
+}
+
+// videoAudio extrai e envia o som do vídeo; nil se falhar (já avisa o usuário).
+func videoAudio(ctx context.Context, cli *whatsmeow.Client, evt *events.Message, mp4 []byte) *waE2E.AudioMessage {
+	m4a, err := cb.Convert("audio", mp4, "")
+	if err != nil {
+		fail(ctx, cli, evt, "extrair o som do vídeo", err)
+		return nil
+	}
+	if len(m4a) == 0 {
+		reply(ctx, cli, evt, "🔇 Esse vídeo não tem som. Mande sem /sa ou use outro vídeo.")
+		return nil
+	}
+	up, err := cli.Upload(ctx, m4a, whatsmeow.MediaAudio)
+	if err != nil {
+		fail(ctx, cli, evt, "enviar o som", err)
+		return nil
+	}
+	return &waE2E.AudioMessage{
+		URL:               proto.String(up.URL),
+		DirectPath:        proto.String(up.DirectPath),
+		MediaKey:          up.MediaKey,
+		FileEncSHA256:     up.FileEncSHA256,
+		FileSHA256:        up.FileSHA256,
+		FileLength:        proto.Uint64(up.FileLength),
+		Mimetype:          proto.String("audio/mp4"),
+		Seconds:           proto.Uint32(uint32(getConfig().maxSeconds)),
+		MediaKeyTimestamp: proto.Int64(time.Now().Unix()),
+	}
+}
+
+// audioFrom reaproveita a mídia de um áudio já enviado (sem baixar nem reenviar).
+func audioFrom(a *waE2E.AudioMessage) *waE2E.AudioMessage {
+	return &waE2E.AudioMessage{
+		URL:               proto.String(a.GetURL()),
+		DirectPath:        proto.String(a.GetDirectPath()),
+		MediaKey:          a.GetMediaKey(),
+		FileEncSHA256:     a.GetFileEncSHA256(),
+		FileSHA256:        a.GetFileSHA256(),
+		FileLength:        proto.Uint64(a.GetFileLength()),
+		Mimetype:          proto.String(a.GetMimetype()),
+		Seconds:           proto.Uint32(a.GetSeconds()),
+		MediaKeyTimestamp: proto.Int64(a.GetMediaKeyTimestamp()),
+		Waveform:          a.GetWaveform(),
+	}
 }
 
 func quoteOf(evt *events.Message) *waE2E.ContextInfo {
@@ -297,7 +388,7 @@ func quoteOf(evt *events.Message) *waE2E.ContextInfo {
 	}
 }
 
-func sendSticker(ctx context.Context, cli *whatsmeow.Client, evt *events.Message, webp []byte, animated bool) {
+func sendSticker(ctx context.Context, cli *whatsmeow.Client, evt *events.Message, webp []byte, animated bool, audio *waE2E.AudioMessage) {
 	c := getConfig()
 	if withMeta, err := addStickerExif(webp, c.pack, c.author); err == nil {
 		webp = withMeta
@@ -309,28 +400,50 @@ func sendSticker(ctx context.Context, cli *whatsmeow.Client, evt *events.Message
 		fail(ctx, cli, evt, "enviar figurinha", err)
 		return
 	}
-	_, err = cli.SendMessage(ctx, evt.Info.Chat, &waE2E.Message{
-		StickerMessage: &waE2E.StickerMessage{
-			URL:           proto.String(up.URL),
-			DirectPath:    proto.String(up.DirectPath),
-			MediaKey:      up.MediaKey,
-			FileEncSHA256: up.FileEncSHA256,
-			FileSHA256:    up.FileSHA256,
-			FileLength:    proto.Uint64(up.FileLength),
-			Mimetype:      proto.String("image/webp"),
-			Width:         proto.Uint32(512),
-			Height:        proto.Uint32(512),
-			IsAnimated:    proto.Bool(animated),
-			ContextInfo:   quoteOf(evt),
-		},
-	})
-	if err != nil {
+	st := &waE2E.StickerMessage{
+		URL:               proto.String(up.URL),
+		DirectPath:        proto.String(up.DirectPath),
+		MediaKey:          up.MediaKey,
+		FileEncSHA256:     up.FileEncSHA256,
+		FileSHA256:        up.FileSHA256,
+		FileLength:        proto.Uint64(up.FileLength),
+		Mimetype:          proto.String("image/webp"),
+		Width:             proto.Uint32(512),
+		Height:            proto.Uint32(512),
+		IsAnimated:        proto.Bool(animated),
+		MediaKeyTimestamp: proto.Int64(time.Now().Unix()),
+	}
+	lastMu.Lock()
+	lastSticker = proto.Clone(st).(*waE2E.StickerMessage)
+	lastMu.Unlock()
+	if audio != nil {
+		sendStickerWithAudio(ctx, cli, evt, st, audio)
+		return
+	}
+	st.ContextInfo = quoteOf(evt)
+	if _, err = cli.SendMessage(ctx, evt.Info.Chat, &waE2E.Message{StickerMessage: st}); err != nil {
 		logf("Erro ao enviar figurinha: %v", err)
 		return
 	}
 	logf("Figurinha enviada ✅ (%d KB%s)", len(webp)/1024, map[bool]string{true: ", animada", false: ""}[animated])
 	if cb != nil {
 		cb.OnStickerSent(animated)
+	}
+}
+
+// sendStickerWithAudio manda a figurinha com um áudio embutido (figurinha com som).
+func sendStickerWithAudio(ctx context.Context, cli *whatsmeow.Client, evt *events.Message, base *waE2E.StickerMessage, audio *waE2E.AudioMessage) {
+	st := proto.Clone(base).(*waE2E.StickerMessage)
+	st.Audio = &waE2E.StickerMessage_AudioMessage{AudioMessage: audio}
+	st.ContextInfo = quoteOf(evt)
+	if _, err := cli.SendMessage(ctx, evt.Info.Chat, &waE2E.Message{StickerMessage: st}); err != nil {
+		logf("Erro ao enviar figurinha com som: %v", err)
+		reply(ctx, cli, evt, "❌ Não consegui enviar a figurinha com som.")
+		return
+	}
+	logf("Figurinha com som enviada 🔊 (%ds de áudio)", audio.GetSeconds())
+	if cb != nil {
+		cb.OnStickerSent(st.GetIsAnimated())
 	}
 }
 

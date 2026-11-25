@@ -35,12 +35,15 @@ type Callback interface {
 	//   op "video"   -> data = mp4,      devolve WebP animado 512x512
 	//   op "text"    -> arg  = texto,    devolve WebP estático
 	//   op "toimage" -> data = webp,     devolve PNG
+	//   op "togif"   -> data = webp animado, devolve MP4 (GIF do WhatsApp)
+	//   op "audio"   -> data = mp4, devolve o áudio (M4A/AAC) dos primeiros segundos; vazio se não tiver som
 	Convert(op string, data []byte, arg string) ([]byte, error)
 }
 
 type config struct {
 	pack, author       string
 	autoImage, autoGif bool
+	maxSeconds         int
 }
 
 var (
@@ -51,7 +54,7 @@ var (
 	startedAt time.Time
 
 	cfgMu sync.RWMutex
-	cfg   = config{pack: "ZapFig", author: "", autoImage: true, autoGif: true}
+	cfg   = config{pack: "ZapFig", author: "", autoImage: true, autoGif: true, maxSeconds: 6}
 )
 
 func init() {
@@ -70,10 +73,14 @@ func getConfig() config {
 	return cfg
 }
 
-// Configure define o nome do pacote, o autor e a conversão automática.
-func Configure(pack, author string, autoImage, autoGif bool) {
+// Configure define o nome do pacote, o autor, a conversão automática e a
+// duração máxima (s) das figurinhas animadas.
+func Configure(pack, author string, autoImage, autoGif bool, maxSeconds int) {
+	if maxSeconds < 1 || maxSeconds > 8 {
+		maxSeconds = 6
+	}
 	cfgMu.Lock()
-	cfg = config{pack: strings.TrimSpace(pack), author: strings.TrimSpace(author), autoImage: autoImage, autoGif: autoGif}
+	cfg = config{pack: strings.TrimSpace(pack), author: strings.TrimSpace(author), autoImage: autoImage, autoGif: autoGif, maxSeconds: maxSeconds}
 	cfgMu.Unlock()
 }
 
