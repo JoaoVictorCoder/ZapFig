@@ -1,7 +1,8 @@
 name: Release
 
-# Cria um release no GitHub com os APKs assinados sempre que você der push numa tag v*
-#   git tag v1.0.0 && git push origin v1.0.0
+# Cria um release no GitHub com os APKs assinados:
+#  - ao dar push numa tag v*            (git tag v1.2.0 && git push origin v1.2.0)
+#  - ou em Actions > Release > Run workflow (usa o versionName do app/build.gradle.kts)
 on:
   push:
     tags: ["v*"]
@@ -75,9 +76,19 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon
 
+      - name: Versão
+        id: ver
+        run: |
+          V=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then T="${GITHUB_REF#refs/tags/}"; else T="v$V"; fi
+          if [ "$T" != "v$V" ]; then echo "::error::Tag $T não bate com versionName $V"; exit 1; fi
+          echo "tag=$T" >> "$GITHUB_OUTPUT"
+
       - name: Publicar release
-        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: ZapFig ${{ steps.ver.outputs.tag }}
           files: app/build/outputs/apk/release/*.apk
           generate_release_notes: true
