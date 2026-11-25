@@ -42,6 +42,8 @@ private val commands = listOf(
     Triple("🖼️", "Responder figurinha com /img", "Vira imagem. Se a figurinha for animada, vira GIF."),
     Triple("✍️", "/t seu texto", "Cria uma figurinha só de texto."),
     Triple("🏷️", "/pack Nome | Autor", "Muda o nome do pacote e o autor das próximas figurinhas."),
+    Triple("📥", "/baixar link", "Baixa o vídeo do link (YouTube, Instagram, TikTok, X e outros)."),
+    Triple("🎧", "/mp3 link", "Baixa só o áudio, em MP3."),
     Triple("🚫", "Legenda /n", "Aquela foto ou GIF não vira figurinha."),
     Triple("❓", "/ajuda", "Mostra a lista de comandos no próprio WhatsApp."),
     Triple("🏓", "/ping", "Responde se o bot estiver ligado."),

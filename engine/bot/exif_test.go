@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -81,5 +82,28 @@ func TestOggOpusSeconds(t *testing.T) {
 	}
 	if s := oggOpusSeconds(ogg); s != 4 {
 		t.Errorf("duração = %d, esperado 4 (3,4 s arredondado pra cima)", s)
+	}
+}
+
+func TestFindURL(t *testing.T) {
+	cases := map[string]string{
+		"olha isso https://youtu.be/abc123?t=5 kkk": "https://youtu.be/abc123?t=5",
+		"(https://www.instagram.com/reel/XYZ/).":    "https://www.instagram.com/reel/XYZ/",
+		"sem link aqui":                             "",
+		"*https://vm.tiktok.com/ZMabc/*":            "https://vm.tiktok.com/ZMabc/",
+	}
+	for in, want := range cases {
+		if got := findURL(in); got != want {
+			t.Errorf("findURL(%q) = %q, want %q", in, got, want)
+		}
+	}
+	if a, ok := isDownloadCmd("mp3"); !a || !ok {
+		t.Error("mp3")
+	}
+	if safeFileName(`a/b:c*?"d`) != "a b c d" {
+		t.Errorf("safeFileName = %q", safeFileName(`a/b:c*?"d`))
+	}
+	if shortErr(fmt.Errorf("blah\nERROR: [youtube] abc: Video unavailable\nmore")) != "[youtube] abc: Video unavailable" {
+		t.Error("shortErr")
 	}
 }

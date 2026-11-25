@@ -30,6 +30,9 @@ type Callback interface {
 	OnStickerSent(animated bool)
 	// OnConfigChanged avisa que o usuário mudou pacote/autor via comando no chat.
 	OnConfigChanged(pack string, author string)
+	// FetchMedia baixa um vídeo (ou só o áudio, em MP3) de um link com yt-dlp e
+	// devolve um JSON: {"path","mime","title","duration","width","height","thumb"}.
+	FetchMedia(url string, audioOnly bool) (string, error)
 	// Convert faz o trabalho pesado de mídia no lado Android.
 	//   op "image"   -> data = jpeg/png, devolve WebP estático 512x512
 	//   op "video"   -> data = mp4,      devolve WebP animado 512x512

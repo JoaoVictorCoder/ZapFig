@@ -109,6 +109,9 @@ const helpText = `🧩 *ZapFig: comandos*
 ✍️ */t seu texto* → figurinha de texto
 🏷️ */pack Nome | Autor* → muda o pacote das próximas
 🚫 Legenda */n* → não converte aquela foto
+📥 */baixar link* → baixa o vídeo (YouTube, Instagram, TikTok, X…)
+🎧 */mp3 link* → baixa só o áudio
+   (ou responda uma mensagem com link usando /baixar ou /mp3)
 🏓 */ping* → testa se o bot está ligado`
 
 type mediaJob struct {
@@ -211,6 +214,23 @@ func process(evt *events.Message) {
 	}
 
 	switch cmd {
+	case "baixar", "b", "dl", "video", "vídeo", "mp3", "musica", "música":
+		// Fora da fila das figurinhas: um download por vez, sem travar o resto.
+		go func() {
+			select {
+			case dlSlot <- struct{}{}:
+			default:
+				reply(context.Background(), cli, evt, "⏳ Já tem um download em andamento, esse entra na fila…")
+				dlSlot <- struct{}{}
+			}
+			defer func() { <-dlSlot }()
+			defer func() {
+				if r := recover(); r != nil {
+					logf("Erro inesperado no download: %v", r)
+				}
+			}()
+			handleDownload(context.Background(), cli, evt, cmd, arg, quoted)
+		}()
 	case "ping":
 		reply(ctx, cli, evt, "🏓 pong! ZapFig v"+Version+" ligado.")
 	case "ajuda", "help", "menu", "comandos":

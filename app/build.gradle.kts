@@ -22,8 +22,8 @@ android {
         applicationId = "com.zapfig.app"
         minSdk = 28
         targetSdk = 35
-        versionCode = 7
-        versionName = "1.2.3"
+        versionCode = 8
+        versionName = "1.3.0"
         buildConfigField("String", "UPDATE_REPO", "\"JoaoVictorCoder/ZapFig\"")
         externalNativeBuild {
             cmake { arguments += listOf("-DANDROID_STL=none") }
@@ -76,7 +76,16 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
 
-    packaging { jniLibs { useLegacyPackaging = false } }
+    // yt-dlp/Python/ffmpeg precisam das libs nativas extraídas no aparelho
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+            // o yt-dlp traz Python/ffmpeg também para x86; celular não usa
+            excludes += listOf("lib/x86/**", "lib/x86_64/**")
+            // são zips com Python/ffmpeg, não bibliotecas de verdade: não tentar "strip"
+            keepDebugSymbols += listOf("**/libpython.zip.so", "**/libffmpeg.zip.so")
+        }
+    }
 }
 
 // Nomes de arquivo bonitos: ZapFig-1.0.0-arm64-v8a.apk etc.
@@ -98,4 +107,8 @@ dependencies {
     implementation("androidx.compose.material:material-icons-core")
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+
+    // Download de vídeos por link: yt-dlp + Python + ffmpeg empacotados para Android
+    implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
+    implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1")
 }

@@ -17,6 +17,7 @@ import android.os.PowerManager
 import android.service.quicksettings.TileService
 import com.zapfig.app.media.AudioExtractor
 import com.zapfig.app.media.CropMode
+import com.zapfig.app.media.Downloader
 import com.zapfig.app.media.GifMaker
 import com.zapfig.app.media.StickerMaker
 import com.zapfig.app.ui.MainActivity
@@ -84,6 +85,9 @@ class BotService : Service() {
             prefs.author = author
         }
 
+        override fun fetchMedia(url: String, audioOnly: Boolean): String =
+            Downloader.fetch(this@BotService, url, audioOnly) { BotState.log(it) }
+
         override fun convert(op: String, data: ByteArray?, arg: String): ByteArray {
             // arg "stretch" = /s2: quadrado perfeito, ignora o enquadramento dos Ajustes
             val crop = if (arg == "stretch") CropMode.STRETCH else prefs.crop
@@ -139,6 +143,10 @@ class BotService : Service() {
                             BotState.log("Não consegui verificar atualizações: ${e.message}")
                         }
                     }
+            thread(name = "zapfig-ytdlp") {
+                Downloader.cleanup(this)
+                Downloader.updateIfDue(this) { BotState.log(it) }
+            }
             thread(name = "zapfig-start") {
                 try {
                     Bot.start(filesDir.absolutePath, phone, callback)

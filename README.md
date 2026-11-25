@@ -16,6 +16,7 @@ O bot só responde na conversa **com você mesmo**.
 - 🖼️ Responder figurinha com `/img` → volta a ser imagem, ou **GIF** se for animada
 - ↩️ Responder qualquer foto/vídeo com `/s`
 - 🏷️ Nome do pacote e autor gravados na figurinha (`/pack Nome | Autor` ou pelos Ajustes)
+- 📥 `/baixar link` → baixa o vídeo (YouTube, Instagram, TikTok, X…) com yt-dlp, no próprio celular; `/mp3 link` → só o áudio
 - Enquadramento: encaixar (fundo transparente), recortar ou esticar
 - Botão nas **Configurações rápidas**, ligar junto com o celular, estatísticas, log
 - Pareamento por **código** (não precisa escanear QR)
@@ -89,4 +90,6 @@ Lembre de subir `versionCode`/`versionName` em `app/build.gradle.kts` a cada ver
 ## Licenças de terceiros
 - [whatsmeow](https://github.com/tulir/whatsmeow): MPL-2.0
 - [libwebp](https://chromium.googlesource.com/webm/libwebp): BSD (ver `app/src/main/cpp/libwebp/COPYING`)
+- [youtubedl-android](https://github.com/yausername/youtubedl-android) / [yt-dlp](https://github.com/yt-dlp/yt-dlp): GPL-3.0 / Unlicense (inclui Python e FFmpeg)
+- [libopus](https://opus-codec.org): BSD
 - [go-sqlite3](https://github.com/mattn/go-sqlite3): MIT
