@@ -1,0 +1,12 @@
+.gradle/
+build/
+app/build/
+.kotlin/
+local.properties
+keystore.properties
+*.jks
+*.keystore
+app/libs/engine.aar
+app/libs/engine-sources.jar
+app/.cxx/
+engine/bot/testdata/out/
