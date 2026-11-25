@@ -22,8 +22,8 @@ android {
         applicationId = "com.zapfig.app"
         minSdk = 28
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.2.0"
+        versionCode = 5
+        versionName = "1.2.1"
         buildConfigField("String", "UPDATE_REPO", "\"JoaoVictorCoder/ZapFig\"")
         externalNativeBuild {
             cmake { arguments += listOf("-DANDROID_STL=none") }

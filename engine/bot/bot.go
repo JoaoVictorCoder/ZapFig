@@ -36,7 +36,7 @@ type Callback interface {
 	//   op "text"    -> arg  = texto,    devolve WebP estático
 	//   op "toimage" -> data = webp,     devolve PNG
 	//   op "togif"   -> data = webp animado, devolve MP4 (GIF do WhatsApp)
-	//   op "audio"   -> data = mp4, devolve o áudio (M4A/AAC) dos primeiros segundos; vazio se não tiver som
+	//   op "audio"   -> data = vídeo/áudio, arg = segundos; devolve OGG Opus mono 48 kHz; vazio se não tiver som
 	Convert(op string, data []byte, arg string) ([]byte, error)
 }
 

@@ -1,8 +1,11 @@
 package bot
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -15,8 +18,10 @@ import (
 )
 
 const (
-	maxVideoBytes = 25 << 20 // 25 MB
-	maxTextLen    = 120
+	maxVideoBytes   = 25 << 20 // 25 MB
+	maxTextLen      = 120
+	maxAudioBytes   = 1 << 20 // limite do WhatsApp para o som da figurinha
+	maxAudioSeconds = 10
 )
 
 var (
@@ -239,7 +244,14 @@ func process(evt *events.Message) {
 				reply(ctx, cli, evt, "🎵 Faça uma figurinha primeiro e depois responda um áudio com /sa.")
 				return
 			}
-			sendStickerWithAudio(ctx, cli, evt, st, audioFrom(quoted.GetAudioMessage()))
+			raw, err := cli.Download(ctx, quoted.GetAudioMessage())
+			if err != nil {
+				fail(ctx, cli, evt, "baixar o áudio", err)
+				return
+			}
+			if a := uploadStickerAudio(ctx, cli, evt, raw, maxAudioSeconds); a != nil {
+				sendStickerWithAudio(ctx, cli, evt, st, a)
+			}
 		default:
 			reply(ctx, cli, evt, "🎵 Responda um *vídeo* com /sa (usa o som dele) ou um *áudio* com /sa (coloca o som na última figurinha).")
 		}
@@ -250,13 +262,13 @@ func process(evt *events.Message) {
 			makeAndSend(ctx, cli, evt, imageJob(quoted.GetImageMessage(), fit))
 		case quoted.GetVideoMessage() != nil:
 			makeAndSend(ctx, cli, evt, videoJob(quoted.GetVideoMessage(), fit))
-		case quoted.GetStickerMessage() != nil:
+		case baseSticker(quoted) != nil:
 			reply(ctx, cli, evt, "Isso já é uma figurinha 😄 Use /img para virar imagem ou GIF.")
 		default:
 			reply(ctx, cli, evt, "↩️ Responda uma foto ou vídeo com /"+cmd)
 		}
 	case "img", "imagem", "toimg":
-		st := quoted.GetStickerMessage()
+		st := baseSticker(quoted)
 		if st == nil {
 			reply(ctx, cli, evt, "↩️ Responda uma figurinha com /img")
 			return
@@ -327,7 +339,7 @@ func makeAndSend(ctx context.Context, cli *whatsmeow.Client, evt *events.Message
 	logf("Convertido em %.1fs", time.Since(t0).Seconds())
 	var audio *waE2E.AudioMessage
 	if job.sound {
-		audio = videoAudio(ctx, cli, evt, data)
+		audio = uploadStickerAudio(ctx, cli, evt, data, getConfig().maxSeconds)
 		if audio == nil {
 			return
 		}
@@ -335,18 +347,23 @@ func makeAndSend(ctx context.Context, cli *whatsmeow.Client, evt *events.Message
 	sendSticker(ctx, cli, evt, webp, job.op == "video", audio)
 }
 
-// videoAudio extrai e envia o som do vídeo; nil se falhar (já avisa o usuário).
-func videoAudio(ctx context.Context, cli *whatsmeow.Client, evt *events.Message, mp4 []byte) *waE2E.AudioMessage {
-	m4a, err := cb.Convert("audio", mp4, "")
+// uploadStickerAudio converte o som de qualquer mídia para OGG Opus (formato
+// das figurinhas com som) e sobe. nil se falhar (já avisa o usuário).
+func uploadStickerAudio(ctx context.Context, cli *whatsmeow.Client, evt *events.Message, media []byte, seconds int) *waE2E.AudioMessage {
+	ogg, err := cb.Convert("audio", media, strconv.Itoa(seconds))
 	if err != nil {
-		fail(ctx, cli, evt, "extrair o som do vídeo", err)
+		fail(ctx, cli, evt, "preparar o som", err)
 		return nil
 	}
-	if len(m4a) == 0 {
-		reply(ctx, cli, evt, "🔇 Esse vídeo não tem som. Mande sem /sa ou use outro vídeo.")
+	if len(ogg) == 0 {
+		reply(ctx, cli, evt, "🔇 Essa mídia não tem som.")
 		return nil
 	}
-	up, err := cli.Upload(ctx, m4a, whatsmeow.MediaAudio)
+	if len(ogg) > maxAudioBytes {
+		reply(ctx, cli, evt, "🔊 O som ficou grande demais (máx. 1 MB). Use um trecho menor.")
+		return nil
+	}
+	up, err := cli.Upload(ctx, ogg, whatsmeow.MediaAudio)
 	if err != nil {
 		fail(ctx, cli, evt, "enviar o som", err)
 		return nil
@@ -358,26 +375,24 @@ func videoAudio(ctx context.Context, cli *whatsmeow.Client, evt *events.Message,
 		FileEncSHA256:     up.FileEncSHA256,
 		FileSHA256:        up.FileSHA256,
 		FileLength:        proto.Uint64(up.FileLength),
-		Mimetype:          proto.String("audio/mp4"),
-		Seconds:           proto.Uint32(uint32(getConfig().maxSeconds)),
+		Mimetype:          proto.String("audio/ogg; codecs=opus"),
+		Seconds:           proto.Uint32(oggOpusSeconds(ogg)),
 		MediaKeyTimestamp: proto.Int64(time.Now().Unix()),
 	}
 }
 
-// audioFrom reaproveita a mídia de um áudio já enviado (sem baixar nem reenviar).
-func audioFrom(a *waE2E.AudioMessage) *waE2E.AudioMessage {
-	return &waE2E.AudioMessage{
-		URL:               proto.String(a.GetURL()),
-		DirectPath:        proto.String(a.GetDirectPath()),
-		MediaKey:          a.GetMediaKey(),
-		FileEncSHA256:     a.GetFileEncSHA256(),
-		FileSHA256:        a.GetFileSHA256(),
-		FileLength:        proto.Uint64(a.GetFileLength()),
-		Mimetype:          proto.String(a.GetMimetype()),
-		Seconds:           proto.Uint32(a.GetSeconds()),
-		MediaKeyTimestamp: proto.Int64(a.GetMediaKeyTimestamp()),
-		Waveform:          a.GetWaveform(),
+// oggOpusSeconds lê a duração pela granule position da última página OGG (48 kHz).
+func oggOpusSeconds(ogg []byte) uint32 {
+	i := bytes.LastIndex(ogg, []byte("OggS"))
+	if i < 0 || i+14 > len(ogg) {
+		return 1
 	}
+	g := binary.LittleEndian.Uint64(ogg[i+6 : i+14])
+	sec := uint32((g + 47999) / 48000)
+	if sec == 0 {
+		sec = 1
+	}
+	return sec
 }
 
 func quoteOf(evt *events.Message) *waE2E.ContextInfo {
@@ -386,6 +401,17 @@ func quoteOf(evt *events.Message) *waE2E.ContextInfo {
 		Participant:   proto.String(evt.Info.Sender.ToNonAD().String()),
 		QuotedMessage: evt.Message,
 	}
+}
+
+// baseSticker acha o StickerMessage mesmo dentro dos envelopes (com som / lottie).
+func baseSticker(m *waE2E.Message) *waE2E.StickerMessage {
+	if st := m.GetStickerMessage(); st != nil {
+		return st
+	}
+	if st := m.GetAudioStickerMessage().GetMessage().GetStickerMessage(); st != nil {
+		return st
+	}
+	return m.GetLottieStickerMessage().GetMessage().GetStickerMessage()
 }
 
 func sendSticker(ctx context.Context, cli *whatsmeow.Client, evt *events.Message, webp []byte, animated bool, audio *waE2E.AudioMessage) {
@@ -436,7 +462,12 @@ func sendStickerWithAudio(ctx context.Context, cli *whatsmeow.Client, evt *event
 	st := proto.Clone(base).(*waE2E.StickerMessage)
 	st.Audio = &waE2E.StickerMessage_AudioMessage{AudioMessage: audio}
 	st.ContextInfo = quoteOf(evt)
-	if _, err := cli.SendMessage(ctx, evt.Info.Chat, &waE2E.Message{StickerMessage: st}); err != nil {
+	st.StickerSentTS = proto.Int64(time.Now().UnixMilli())
+	// Figurinha com som vai dentro do envelope audioStickerMessage (campo 134).
+	msg := &waE2E.Message{AudioStickerMessage: &waE2E.FutureProofMessage{
+		Message: &waE2E.Message{StickerMessage: st},
+	}}
+	if _, err := cli.SendMessage(ctx, evt.Info.Chat, msg); err != nil {
 		logf("Erro ao enviar figurinha com som: %v", err)
 		reply(ctx, cli, evt, "❌ Não consegui enviar a figurinha com som.")
 		return

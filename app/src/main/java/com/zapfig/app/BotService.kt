@@ -94,7 +94,7 @@ class BotService : Service() {
                 "text" -> maker.text(arg)
                 "toimage" -> maker.toImage(data!!)
                 "togif" -> GifMaker.fromAnimatedWebP(data!!, cacheDir)
-                "audio" -> AudioExtractor.fromVideo(data!!, prefs.maxSeconds, cacheDir)
+                "audio" -> AudioExtractor.toOggOpus(data!!, arg.toIntOrNull() ?: prefs.maxSeconds, cacheDir)
                 else -> throw IllegalArgumentException("operação desconhecida: $op")
             }
         }

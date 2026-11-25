@@ -73,3 +73,13 @@ func TestFitAndAnimated(t *testing.T) {
 		t.Error("isAnimatedWebP")
 	}
 }
+
+func TestOggOpusSeconds(t *testing.T) {
+	ogg, err := os.ReadFile("testdata/sine3.4.ogg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := oggOpusSeconds(ogg); s != 4 {
+		t.Errorf("duração = %d, esperado 4 (3,4 s arredondado pra cima)", s)
+	}
+}
