@@ -19,6 +19,7 @@ data class UiState(
     val total: Int = 0,
     val animated: Int = 0,
     val logs: List<String> = emptyList(),
+    val update: Updater.Release? = null,
 )
 
 /** Estado compartilhado entre o serviço (motor Go) e a interface. */
@@ -57,6 +58,10 @@ object BotState {
         val line = "${time.format(Date())}  $msg"
         it.copy(logs = (listOf(line) + it.logs).take(300))
     }
+
+    @Volatile var uiVisible = false
+
+    fun setUpdate(r: Updater.Release?) = _ui.update { it.copy(update = r) }
 
     fun clearLogs() = _ui.update { it.copy(logs = emptyList()) }
 }

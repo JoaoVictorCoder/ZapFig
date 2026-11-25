@@ -17,6 +17,7 @@ O bot só responde na conversa **com você mesmo**.
 - Enquadramento: encaixar (fundo transparente), recortar ou esticar
 - Botão nas **Configurações rápidas**, ligar junto com o celular, estatísticas, log
 - Pareamento por **código** (não precisa escanear QR)
+- 🔄 **Atualização pelo GitHub**: ao abrir o app ou ligar o bot (com internet), procura um Release novo e pergunta se quer atualizar
 - Tudo processado no aparelho; a sessão não vai para backup na nuvem
 
 ## Instalação (usuário)
@@ -81,7 +82,7 @@ Em *Settings › Secrets and variables › Actions*, crie:
 | `ZAPFIG_KEY_PASSWORD` | senha da chave |
 
 Depois: `git tag v1.0.0 && git push origin v1.0.0`. O workflow compila e publica os APKs no Release.
-Lembre de subir `versionCode`/`versionName` em `app/build.gradle.kts` a cada versão.
+Lembre de subir `versionCode`/`versionName` em `app/build.gradle.kts` a cada versão. A tag precisa bater com o `versionName` (`v1.0.1` ↔ `1.0.1`): é assim que o app sabe que tem versão nova.
 
 ## Licenças de terceiros
 - [whatsmeow](https://github.com/tulir/whatsmeow): MPL-2.0

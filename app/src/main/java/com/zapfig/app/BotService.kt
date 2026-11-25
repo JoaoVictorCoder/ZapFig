@@ -120,6 +120,18 @@ class BotService : Service() {
             wakeLock?.let { if (it.isHeld) it.release() }
             wakeLock = (getSystemService(POWER_SERVICE) as PowerManager)
                 .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "zapfig:bot").apply { acquire() }
+            if (prefs.checkUpdates) thread(name = "zapfig-update") {
+                        try {
+                            val r = Updater.check(this)
+                            if (r != null && r.version != prefs.skippedVersion) {
+                                BotState.setUpdate(r)
+                                BotState.log("Atualização disponível: ${r.version}")
+                                if (!BotState.uiVisible) Updater.notifyAvailable(this, r)
+                            }
+                        } catch (e: Exception) {
+                            BotState.log("Não consegui verificar atualizações: ${e.message}")
+                        }
+                    }
             thread(name = "zapfig-start") {
                 try {
                     Bot.start(filesDir.absolutePath, phone, callback)

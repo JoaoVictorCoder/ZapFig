@@ -52,6 +52,15 @@ class Prefs(ctx: Context) {
         get() = sp.getBoolean("want_running", false)
         set(v) = sp.edit().putBoolean("want_running", v).apply()
 
+    var checkUpdates: Boolean
+        get() = sp.getBoolean("check_updates", true)
+        set(v) = sp.edit().putBoolean("check_updates", v).apply()
+
+    /** Versão que o usuário mandou ignorar. */
+    var skippedVersion: String
+        get() = sp.getString("skipped_version", "") ?: ""
+        set(v) = sp.edit().putString("skipped_version", v).apply()
+
     var totalStickers: Int
         get() = sp.getInt("stat_total", 0)
         set(v) = sp.edit().putInt("stat_total", v).apply()

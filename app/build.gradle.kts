@@ -24,6 +24,7 @@ android {
         targetSdk = 35
         versionCode = 2
         versionName = "1.0.0"
+        buildConfigField("String", "UPDATE_REPO", "\"JoaoVictorCoder/ZapFig\"")
         externalNativeBuild {
             cmake { arguments += listOf("-DANDROID_STL=none") }
         }
@@ -67,7 +68,7 @@ android {
         }
     }
 
-    buildFeatures { compose = true }
+    buildFeatures { compose = true; buildConfig = true }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

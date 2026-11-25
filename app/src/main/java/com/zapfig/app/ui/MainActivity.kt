@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import com.zapfig.app.BotService
 import com.zapfig.app.BotState
 import com.zapfig.app.Prefs
+import com.zapfig.app.Updater
 import com.zapfig.engine.bot.Bot
 import kotlin.concurrent.thread
 
@@ -57,6 +58,14 @@ class MainActivity : ComponentActivity() {
 
                 if (!accepted) {
                     TermsDialog(onAccept = { prefs.acceptedTerms = true; accepted = true }, onExit = { finish() })
+                }
+                val update = ui.update
+                if (accepted && update != null) {
+                    UpdateDialog(
+                        update,
+                        onLater = { BotState.setUpdate(null) },
+                        onSkip = { prefs.skippedVersion = update.version; BotState.setUpdate(null) },
+                    )
                 }
 
                 Scaffold(
@@ -93,9 +102,24 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private var checkedThisSession = false
+
     override fun onResume() {
         super.onResume()
+        BotState.uiVisible = true
         refreshPaired()
+        if (prefs.checkUpdates && !checkedThisSession) {
+            checkedThisSession = true
+            thread {
+                val r = try { Updater.check(this) } catch (e: Exception) { null }
+                if (r != null && r.version != prefs.skippedVersion) BotState.setUpdate(r)
+            }
+        }
+    }
+
+    override fun onPause() {
+        BotState.uiVisible = false
+        super.onPause()
     }
 
     private fun refreshPaired() = thread {

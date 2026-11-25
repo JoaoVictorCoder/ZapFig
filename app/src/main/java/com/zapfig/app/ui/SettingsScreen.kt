@@ -50,6 +50,7 @@ import com.zapfig.app.BotState
 import com.zapfig.app.Prefs
 import com.zapfig.app.R
 import com.zapfig.app.ToggleTileService
+import com.zapfig.app.Updater
 import com.zapfig.app.UiState
 import com.zapfig.app.media.CropMode
 import com.zapfig.engine.bot.Bot
@@ -67,6 +68,8 @@ fun SettingsScreen(ui: UiState, prefs: Prefs, modifier: Modifier, onLoggedOut: (
     var fps by remember { mutableFloatStateOf(prefs.fps.toFloat()) }
     var boot by remember { mutableStateOf(prefs.startOnBoot) }
     var confirmLogout by remember { mutableStateOf(false) }
+    var checkUpdates by remember { mutableStateOf(prefs.checkUpdates) }
+    var checking by remember { mutableStateOf(false) }
 
     fun save() {
         prefs.pack = pack.trim().ifEmpty { "ZapFig" }
@@ -154,6 +157,26 @@ fun SettingsScreen(ui: UiState, prefs: Prefs, modifier: Modifier, onLoggedOut: (
                 OutlinedButton({ confirmLogout = true }, Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Danger)) { Text("Sair da conta") }
             }
+        }
+
+        Group("Atualizações")
+        Section {
+            SwitchRow("Verificar ao abrir e ao ligar", "Procura versão nova no GitHub quando tiver internet", checkUpdates) {
+                checkUpdates = it; prefs.checkUpdates = it
+            }
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(enabled = !checking, onClick = {
+                checking = true
+                thread {
+                    val r = try { Updater.check(ctx) } catch (e: Exception) { null }
+                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        checking = false
+                        if (r != null) BotState.setUpdate(r)
+                        else Toast.makeText(ctx, if (Updater.hasInternet(ctx)) "Você já está na versão mais nova ✅"
+                            else "Sem internet", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }, modifier = Modifier.fillMaxWidth()) { Text(if (checking) "Procurando…" else "Procurar atualização agora") }
         }
 
         Group("Sobre")
