@@ -32,7 +32,10 @@ func TestAddStickerExif(t *testing.T) {
 }
 
 func TestParseCommand(t *testing.T) {
-	cases := []struct{ in, cmd, arg string; ok bool }{
+	cases := []struct {
+		in, cmd, arg string
+		ok           bool
+	}{
 		{"/s", "s", "", true},
 		{"  /T  Bom dia  ", "t", "Bom dia", true},
 		{"/pack Memes | João", "pack", "Memes | João", true},
@@ -51,5 +54,22 @@ func TestParseCommand(t *testing.T) {
 	}
 	if p, _, h := parsePack("Só nome"); p != "Só nome" || h {
 		t.Error("parsePack sem autor")
+	}
+}
+
+func TestFitAndAnimated(t *testing.T) {
+	if f, ok := fitFor("s2"); !ok || f != "stretch" {
+		t.Error("s2")
+	}
+	if f, ok := fitFor("s"); !ok || f != "" {
+		t.Error("s")
+	}
+	if _, ok := fitFor("img"); ok {
+		t.Error("img não é comando de figurinha")
+	}
+	anim, _ := os.ReadFile("testdata/anim.webp")
+	static, _ := os.ReadFile("testdata/lossy_alpha.webp")
+	if !isAnimatedWebP(anim) || isAnimatedWebP(static) {
+		t.Error("isAnimatedWebP")
 	}
 }

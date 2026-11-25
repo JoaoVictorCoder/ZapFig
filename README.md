@@ -11,7 +11,8 @@ O bot só responde na conversa **com você mesmo**.
 - 📷 Foto → figurinha (automático ou com `/s`)
 - 🎞️ GIF / 🎬 vídeo → **figurinha animada** (WebP animado, até 8 s, ≤ 500 KB)
 - ✍️ `/t texto` → figurinha de texto
-- 🖼️ Responder figurinha com `/img` → volta a ser imagem
+- 📐 `/s2` → figurinha esticada num quadrado perfeito (sem bordas)
+- 🖼️ Responder figurinha com `/img` → volta a ser imagem, ou **GIF** se for animada
 - ↩️ Responder qualquer foto/vídeo com `/s`
 - 🏷️ Nome do pacote e autor gravados na figurinha (`/pack Nome | Autor` ou pelos Ajustes)
 - Enquadramento: encaixar (fundo transparente), recortar ou esticar

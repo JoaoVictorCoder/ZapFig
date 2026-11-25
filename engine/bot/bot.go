@@ -39,7 +39,7 @@ type Callback interface {
 }
 
 type config struct {
-	pack, author      string
+	pack, author       string
 	autoImage, autoGif bool
 }
 

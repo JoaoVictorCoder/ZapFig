@@ -96,8 +96,9 @@ const helpText = `🧩 *ZapFig: comandos*
 🎞️ Mande um *GIF* → figurinha animada
 🎬 *Vídeo* com legenda */s* → figurinha animada (até 8s)
 
-↩️ Responda uma foto/vídeo com */s* → converte
-↩️ Responda uma figurinha com */img* → volta a ser imagem
+📐 Legenda */s2* → figurinha esticada, quadrado perfeito (sem bordas)
+↩️ Responda uma foto/vídeo com */s* ou */s2* → converte
+↩️ Responda uma figurinha com */img* → vira imagem (ou GIF, se for animada)
 ✍️ */t seu texto* → figurinha de texto
 🏷️ */pack Nome | Autor* → muda o pacote das próximas
 🚫 Legenda */n* → não converte aquela foto
@@ -107,14 +108,31 @@ type mediaJob struct {
 	op       string // image | video
 	download whatsmeow.DownloadableMessage
 	size     uint64
+	fit      string // "" = ajuste dos Ajustes; "stretch" = quadrado perfeito (/s2)
 }
 
-func imageJob(img *waE2E.ImageMessage) *mediaJob {
-	return &mediaJob{op: "image", download: img, size: img.GetFileLength()}
+func imageJob(img *waE2E.ImageMessage, fit string) *mediaJob {
+	return &mediaJob{op: "image", download: img, size: img.GetFileLength(), fit: fit}
 }
 
-func videoJob(v *waE2E.VideoMessage) *mediaJob {
-	return &mediaJob{op: "video", download: v, size: v.GetFileLength()}
+func videoJob(v *waE2E.VideoMessage, fit string) *mediaJob {
+	return &mediaJob{op: "video", download: v, size: v.GetFileLength(), fit: fit}
+}
+
+// fitFor diz qual ajuste um comando de figurinha pede ("" se não for comando de figurinha).
+func fitFor(cmd string) (fit string, ok bool) {
+	switch cmd {
+	case "s", "f", "fig", "sticker":
+		return "", true
+	case "s2", "f2", "fig2", "quadrado":
+		return "stretch", true
+	}
+	return "", false
+}
+
+// isAnimatedWebP: chunk VP8X com a flag de animação (0x02).
+func isAnimatedWebP(b []byte) bool {
+	return len(b) > 21 && string(b[0:4]) == "RIFF" && string(b[12:16]) == "VP8X" && b[20]&0x02 != 0
 }
 
 func process(evt *events.Message) {
@@ -134,8 +152,10 @@ func process(evt *events.Message) {
 		if isCmd && cmd == "n" {
 			return
 		}
-		if (isCmd && cmd == "s") || (!isCmd && c.autoImage) {
-			makeAndSend(ctx, cli, evt, imageJob(img))
+		if fit, ok := fitFor(cmd); isCmd && ok {
+			makeAndSend(ctx, cli, evt, imageJob(img, fit))
+		} else if !isCmd && c.autoImage {
+			makeAndSend(ctx, cli, evt, imageJob(img, ""))
 		}
 		return
 
@@ -145,8 +165,10 @@ func process(evt *events.Message) {
 		if isCmd && cmd == "n" {
 			return
 		}
-		if (isCmd && cmd == "s") || (!isCmd && v.GetGifPlayback() && c.autoGif) {
-			makeAndSend(ctx, cli, evt, videoJob(v))
+		if fit, ok := fitFor(cmd); isCmd && ok {
+			makeAndSend(ctx, cli, evt, videoJob(v, fit))
+		} else if !isCmd && v.GetGifPlayback() && c.autoGif {
+			makeAndSend(ctx, cli, evt, videoJob(v, ""))
 		}
 		return
 	}
@@ -182,16 +204,17 @@ func process(evt *events.Message) {
 			return
 		}
 		sendSticker(ctx, cli, evt, webp, false)
-	case "s", "f", "fig", "sticker":
+	case "s", "f", "fig", "sticker", "s2", "f2", "fig2", "quadrado":
+		fit, _ := fitFor(cmd)
 		switch {
 		case quoted.GetImageMessage() != nil:
-			makeAndSend(ctx, cli, evt, imageJob(quoted.GetImageMessage()))
+			makeAndSend(ctx, cli, evt, imageJob(quoted.GetImageMessage(), fit))
 		case quoted.GetVideoMessage() != nil:
-			makeAndSend(ctx, cli, evt, videoJob(quoted.GetVideoMessage()))
+			makeAndSend(ctx, cli, evt, videoJob(quoted.GetVideoMessage(), fit))
 		case quoted.GetStickerMessage() != nil:
-			reply(ctx, cli, evt, "Isso já é uma figurinha 😄 Use /img para virar imagem.")
+			reply(ctx, cli, evt, "Isso já é uma figurinha 😄 Use /img para virar imagem ou GIF.")
 		default:
-			reply(ctx, cli, evt, "↩️ Responda uma foto ou vídeo com /s")
+			reply(ctx, cli, evt, "↩️ Responda uma foto ou vídeo com /"+cmd)
 		}
 	case "img", "imagem", "toimg":
 		st := quoted.GetStickerMessage()
@@ -202,6 +225,15 @@ func process(evt *events.Message) {
 		data, err := cli.Download(ctx, st)
 		if err != nil {
 			fail(ctx, cli, evt, "baixar figurinha", err)
+			return
+		}
+		if isAnimatedWebP(data) {
+			mp4, err := cb.Convert("togif", data, "")
+			if err != nil {
+				fail(ctx, cli, evt, "transformar em GIF", err)
+				return
+			}
+			sendGif(ctx, cli, evt, mp4)
 			return
 		}
 		png, err := cb.Convert("toimage", data, "")
@@ -248,7 +280,7 @@ func makeAndSend(ctx context.Context, cli *whatsmeow.Client, evt *events.Message
 	}
 	logf("Convertendo %s (%d KB)…", map[string]string{"image": "foto", "video": "vídeo"}[job.op], len(data)/1024)
 	t0 := time.Now()
-	webp, err := cb.Convert(job.op, data, "")
+	webp, err := cb.Convert(job.op, data, job.fit)
 	if err != nil {
 		fail(ctx, cli, evt, "converter", err)
 		return
@@ -323,6 +355,32 @@ func sendImage(ctx context.Context, cli *whatsmeow.Client, evt *events.Message, 
 	if err != nil {
 		logf("Erro ao enviar imagem: %v", err)
 	}
+}
+
+func sendGif(ctx context.Context, cli *whatsmeow.Client, evt *events.Message, mp4 []byte) {
+	up, err := cli.Upload(ctx, mp4, whatsmeow.MediaVideo)
+	if err != nil {
+		fail(ctx, cli, evt, "enviar GIF", err)
+		return
+	}
+	_, err = cli.SendMessage(ctx, evt.Info.Chat, &waE2E.Message{
+		VideoMessage: &waE2E.VideoMessage{
+			URL:           proto.String(up.URL),
+			DirectPath:    proto.String(up.DirectPath),
+			MediaKey:      up.MediaKey,
+			FileEncSHA256: up.FileEncSHA256,
+			FileSHA256:    up.FileSHA256,
+			FileLength:    proto.Uint64(up.FileLength),
+			Mimetype:      proto.String("video/mp4"),
+			GifPlayback:   proto.Bool(true),
+			ContextInfo:   quoteOf(evt),
+		},
+	})
+	if err != nil {
+		logf("Erro ao enviar GIF: %v", err)
+		return
+	}
+	logf("GIF enviado ✅ (%d KB)", len(mp4)/1024)
 }
 
 func reply(ctx context.Context, cli *whatsmeow.Client, evt *events.Message, text string) {

@@ -15,6 +15,8 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
 import android.service.quicksettings.TileService
+import com.zapfig.app.media.CropMode
+import com.zapfig.app.media.GifMaker
 import com.zapfig.app.media.StickerMaker
 import com.zapfig.app.ui.MainActivity
 import com.zapfig.engine.bot.Bot
@@ -82,12 +84,15 @@ class BotService : Service() {
         }
 
         override fun convert(op: String, data: ByteArray?, arg: String): ByteArray {
-            val opt = StickerMaker.Options(prefs.crop, prefs.fps, prefs.maxSeconds)
+            // arg "stretch" = /s2: quadrado perfeito, ignora o enquadramento dos Ajustes
+            val crop = if (arg == "stretch") CropMode.STRETCH else prefs.crop
+            val opt = StickerMaker.Options(crop, prefs.fps, prefs.maxSeconds)
             return when (op) {
                 "image" -> maker.image(data!!, opt)
                 "video" -> maker.video(data!!, opt)
                 "text" -> maker.text(arg)
                 "toimage" -> maker.toImage(data!!)
+                "togif" -> GifMaker.fromAnimatedWebP(data!!, cacheDir)
                 else -> throw IllegalArgumentException("operação desconhecida: $op")
             }
         }

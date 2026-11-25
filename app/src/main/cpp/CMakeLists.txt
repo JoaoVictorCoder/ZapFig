@@ -14,6 +14,6 @@ set(WEBP_BUILD_EXTRAS OFF CACHE BOOL "" FORCE)
 set(WEBP_BUILD_LIBWEBPMUX ON CACHE BOOL "" FORCE)
 add_subdirectory(libwebp EXCLUDE_FROM_ALL)
 
-add_library(zapfignative SHARED webpanim.c)
-target_link_libraries(zapfignative libwebpmux webp jnigraphics log)
+add_library(zapfignative SHARED webpanim.c webpdecode.c)
+target_link_libraries(zapfignative libwebpmux webpdemux webp jnigraphics log)
 target_link_options(zapfignative PRIVATE "-Wl,-z,max-page-size=16384")
