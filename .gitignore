@@ -10,3 +10,4 @@ app/libs/engine.aar
 app/libs/engine-sources.jar
 app/.cxx/
 engine/bot/testdata/out/
+__pycache__/
