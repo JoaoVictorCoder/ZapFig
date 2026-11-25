@@ -1,0 +1,81 @@
+name: Release do bot
+
+# Publica SÓ o bot (motor), sem app novo. Quem já tem o app recebe a atualização
+# na próxima vez que ligar o bot. Antes: suba `const version` em engine/bot/bot.go.
+# Actions > Release do bot > Run workflow
+#
+# Se a mudança alterar a API do motor (funções exportadas ou o Callback), o app
+# atual não vai aceitar este bot: nesse caso publique pelo "Release do app".
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      ANDROID_NDK_VERSION: 27.2.12479018
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: engine/go.mod
+          cache-dependency-path: engine/go.sum
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools"
+          log-accepted-android-sdk-licenses: false
+
+      - name: Instalar NDK
+        run: sdkmanager "ndk;${ANDROID_NDK_VERSION}"
+
+      - name: Testes do motor
+        working-directory: engine
+        run: go test ./...
+
+      - name: Gerar o motor
+        run: ANDROID_NDK_HOME="$ANDROID_HOME/ndk/$ANDROID_NDK_VERSION" tools/build_engine.sh
+
+      - name: Versão
+        id: ver
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          EV=$(grep -oP 'const version = "\K[^"]+' engine/bot/bot.go)
+          API=$(python3 tools/engine_api.py app/libs/engine-sources.jar)
+          ET="engine-v$EV-$API"
+          if gh release view "$ET" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::O bot $EV já foi publicado. Suba 'const version' em engine/bot/bot.go."
+            exit 1
+          fi
+          echo "engine_version=$EV" >> "$GITHUB_OUTPUT"
+          echo "engine_tag=$ET" >> "$GITHUB_OUTPUT"
+          echo "### Bot $EV (API $API)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Assinar e empacotar
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ZAPFIG_KEYSTORE_BASE64 }}
+          PASS: ${{ secrets.ZAPFIG_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$PASS" ]; then echo "::error::Faltam os secrets da keystore"; exit 1; fi
+          echo "$KEYSTORE_BASE64" | tr -d ' \n\r' | base64 -d > "$RUNNER_TEMP/release.jks"
+          openssl pkcs12 -in "$RUNNER_TEMP/release.jks" -nocerts -nodes -passin env:PASS -out "$RUNNER_TEMP/key.pem"
+          python3 tools/package_engine.py build/engine/engine-full.aar app/libs/engine-sources.jar \
+            "${{ steps.ver.outputs.engine_version }}" build/engine/out "$RUNNER_TEMP/key.pem"
+
+      - name: Publicar o bot
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.engine_tag }}
+          target_commitish: ${{ github.sha }}
+          name: Bot ${{ steps.ver.outputs.engine_version }}
+          body: Motor do bot (baixado automaticamente pelo app). Não precisa instalar nada.
+          make_latest: "false"
+          files: |
+            build/engine/out/*.so.gz
+            build/engine/out/engine.json
+            build/engine/out/engine.json.sig

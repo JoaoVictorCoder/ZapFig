@@ -13,6 +13,10 @@ val ksProps = Properties().apply {
 }
 fun signProp(key: String, env: String): String? = ksProps.getProperty(key) ?: System.getenv(env)
 
+fun engineApi(): String = providers.exec {
+    commandLine("python3", rootProject.file("tools/engine_api.py").path, file("libs/engine-sources.jar").path)
+}.standardOutput.asText.get().trim()
+
 android {
     namespace = "com.zapfig.app"
     compileSdk = 35
@@ -22,9 +26,11 @@ android {
         applicationId = "com.zapfig.app"
         minSdk = 28
         targetSdk = 35
-        versionCode = 8
-        versionName = "1.3.0"
+        versionCode = 9
+        versionName = "1.4.0"
         buildConfigField("String", "UPDATE_REPO", "\"JoaoVictorCoder/ZapFig\"")
+        // Impressão digital da API do motor: o app só carrega motores com a mesma (tools/engine_api.py)
+        buildConfigField("String", "ENGINE_API", "\"${engineApi()}\"")
         externalNativeBuild {
             cmake { arguments += listOf("-DANDROID_STL=none") }
         }

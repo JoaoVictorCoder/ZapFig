@@ -232,7 +232,7 @@ func process(evt *events.Message) {
 			handleDownload(context.Background(), cli, evt, cmd, arg, quoted)
 		}()
 	case "ping":
-		reply(ctx, cli, evt, "🏓 pong! ZapFig v"+Version+" ligado.")
+		reply(ctx, cli, evt, "🏓 pong! ZapFig (motor "+version+") ligado.")
 	case "ajuda", "help", "menu", "comandos":
 		reply(ctx, cli, evt, helpText)
 	case "t", "texto":

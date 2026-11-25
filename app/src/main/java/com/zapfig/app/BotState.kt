@@ -20,6 +20,7 @@ data class UiState(
     val animated: Int = 0,
     val logs: List<String> = emptyList(),
     val update: Updater.Release? = null,
+    val enginePending: String? = null,
 )
 
 /** Estado compartilhado entre o serviço (motor Go) e a interface. */
@@ -60,6 +61,8 @@ object BotState {
     }
 
     @Volatile var uiVisible = false
+
+    fun setEnginePending(v: String?) = _ui.update { it.copy(enginePending = v) }
 
     fun setUpdate(r: Updater.Release?) = _ui.update { it.copy(update = r) }
 
