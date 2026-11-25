@@ -31,24 +31,6 @@ O bot só responde na conversa **com você mesmo**.
 
 Em Xiaomi/Poco/Redmi: ative **Início automático** e bateria **Sem restrições** para o ZapFig.
 
-## Como o app e o bot se separam
-O APK **não leva o bot**. O bot (motor em Go/whatsmeow) é publicado em releases próprios
-`engine-v<versão>-<api>` e o app baixa na primeira vez que você toca em **LIGAR**.
-Depois disso, quando sai um bot novo, o app baixa sozinho e é só reiniciar o bot
-(Ajustes › Bot › Reiniciar). Assim dá pra corrigir/melhorar o bot **sem publicar app novo**.
-
-- **Segurança:** cada release do bot tem um `engine.json` (versões + SHA-256) assinado com a
-  mesma chave do APK. O app confere com o próprio certificado antes de carregar; release sem
-  essa assinatura é ignorado.
-- **Compatibilidade:** o `api` do manifesto é a impressão digital das classes Java geradas pelo
-  gomobile (`tools/engine_api.py`). Se você mudar funções exportadas do motor ou o `Callback`,
-  a API muda e é preciso um app novo. Mudanças só por dentro do Go (comandos, correções) não mudam a API.
-
-| Quero publicar… | Faça |
-|---|---|
-| Só o bot (comandos novos, correções no Go) | suba `const version` em `engine/bot/bot.go` › **Actions › Release do bot › Run workflow** |
-| O app (mudou Kotlin/telas ou a API do motor) | suba `versionName`/`versionCode` › **Actions › Release do app › Run workflow** (publica o app e um bot compatível) |
-
 ## Estrutura
 ```
 engine/            motor em Go (whatsmeow): conexão, filtro do chat próprio, comandos, EXIF
@@ -63,19 +45,20 @@ app/               app Android (Kotlin + Jetpack Compose)
 ```
 
 ## Compilar
-Requisitos: Go 1.26+, JDK 17+, Python 3, Android SDK (platform 35), NDK 27.2.12479018 e CMake 3.22.1.
+Requisitos: Go 1.26+, JDK 17+, Android SDK (platform 35), NDK 27.2.12479018 e CMake 3.22.1.
 
 ```bash
-# 1) motor: gera app/libs/engine.aar (só classes) e build/engine/engine-full.aar (com o motor)
-(cd engine && go test ./...)
-tools/build_engine.sh
+# 1) motor Go -> AAR
+cd engine
+go test ./...
+go install golang.org/x/mobile/cmd/gomobile@latest
+gomobile init
+gomobile bind -target=android/arm64,android/arm -androidapi 28 \
+  -javapkg=com.zapfig.engine -ldflags="-s -w" -o ../app/libs/engine.aar ./bot
 
 # 2) APKs (saem em app/build/outputs/apk/release/)
+cd ..
 ./gradlew assembleRelease
-
-# 3) (opcional) empacotar o bot assinado, como a action faz
-python3 tools/package_engine.py build/engine/engine-full.aar app/libs/engine-sources.jar \
-  <versao> build/engine/out chave.pem
 ```
 
 ### Assinatura

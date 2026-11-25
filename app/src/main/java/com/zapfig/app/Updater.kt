@@ -12,7 +12,6 @@ import android.os.Build
 import android.provider.Settings
 import androidx.core.content.FileProvider
 import com.zapfig.app.ui.MainActivity
-import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
@@ -27,8 +26,7 @@ object Updater {
 
     data class Release(val version: String, val notes: String, val apkUrl: String, val apkName: String, val size: Long)
 
-    // Lista de releases: os do app são "v*"; os "engine-v*" são do motor do bot.
-    private const val API = "https://api.github.com/repos/${BuildConfig.UPDATE_REPO}/releases?per_page=40"
+    private const val API = "https://api.github.com/repos/${BuildConfig.UPDATE_REPO}/releases/latest"
     private const val CHANNEL = "updates"
     private const val NOTIF_ID = 2
 
@@ -69,11 +67,8 @@ object Updater {
         }
         try {
             if (conn.responseCode != 200) return null
-            val all = JSONArray(conn.inputStream.bufferedReader().readText())
-            val json = (0 until all.length()).map { all.getJSONObject(it) }
-                .filter { val t = it.optString("tag_name"); t.startsWith("v") && !it.optBoolean("draft") && !it.optBoolean("prerelease") }
-                .maxWithOrNull { a, b -> if (isNewer(a.optString("tag_name"), b.optString("tag_name"))) 1 else if (a.optString("tag_name") == b.optString("tag_name")) 0 else -1 }
-                ?: return null
+            val json = JSONObject(conn.inputStream.bufferedReader().readText())
+            if (json.optBoolean("draft") || json.optBoolean("prerelease")) return null
             val tag = json.getString("tag_name")
             if (!isNewer(tag, currentVersion(ctx))) return null
             val assets = json.getJSONArray("assets")
@@ -146,24 +141,6 @@ object Updater {
         ctx.startActivity(Intent(Intent.ACTION_VIEW)
             .setDataAndType(uri, "application/vnd.android.package-archive")
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK))
-    }
-
-    /** Motor novo baixado: avisa que é só reiniciar o bot. */
-    fun notifyEngineReady(ctx: Context, version: String) {
-        val nm = ctx.getSystemService(NotificationManager::class.java)
-        if (Build.VERSION.SDK_INT >= 26 && nm.getNotificationChannel(CHANNEL) == null) {
-            nm.createNotificationChannel(NotificationChannel(CHANNEL, "Atualizações", NotificationManager.IMPORTANCE_DEFAULT))
-        }
-        val open = PendingIntent.getActivity(ctx, 3, Intent(ctx, MainActivity::class.java).putExtra("tab", 1),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        val b = if (Build.VERSION.SDK_INT >= 26) android.app.Notification.Builder(ctx, CHANNEL)
-                else @Suppress("DEPRECATION") android.app.Notification.Builder(ctx)
-        nm.notify(NOTIF_ID + 1, b.setSmallIcon(R.drawable.ic_notif)
-            .setContentTitle("Bot $version baixado")
-            .setContentText("Toque e reinicie o bot em Ajustes para usar a versão nova")
-            .setContentIntent(open)
-            .setAutoCancel(true)
-            .build())
     }
 
     /** Usado quando o bot liga sem a tela aberta (atalho rápido, boot). */

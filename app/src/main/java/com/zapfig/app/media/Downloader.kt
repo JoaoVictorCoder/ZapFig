@@ -36,7 +36,7 @@ object Downloader {
             val status = YoutubeDL.getInstance().updateYoutubeDL(ctx.applicationContext, YoutubeDL.UpdateChannel._STABLE)
             sp.edit().putLong("ytdlp_updated_at", System.currentTimeMillis()).apply()
             log("yt-dlp: ${status?.name?.lowercase() ?: "ok"} (${YoutubeDL.getInstance().versionName(ctx) ?: "?"})")
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             log("Não consegui atualizar o yt-dlp: ${e.message}")
         }
     }
@@ -46,7 +46,12 @@ object Downloader {
      * {"path","mime","title","duration","width","height","thumb"}
      */
     fun fetch(ctx: Context, url: String, audioOnly: Boolean, log: (String) -> Unit): String {
-        init(ctx)
+        try {
+            init(ctx)
+        } catch (e: Throwable) {
+            throw IllegalStateException("não consegui preparar o yt-dlp: ${e.message}", e)
+        }
+        updateIfDue(ctx, log)
         val dir = File(ctx.cacheDir, "dl/${System.currentTimeMillis()}").apply { mkdirs() }
         val req = YoutubeDLRequest(url).apply {
             addOption("-o", "${dir.absolutePath}/media.%(ext)s")

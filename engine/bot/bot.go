@@ -18,12 +18,8 @@ import (
 	waLog "go.mau.fi/whatsmeow/util/log"
 )
 
-// version do motor. Mudar este número NÃO muda a API: dá para publicar
-// motores novos sem precisar de um app novo.
-const version = "1.3.0"
-
-// EngineVersion devolve a versão do motor (mostrada no app).
-func EngineVersion() string { return version }
+// Version do motor, mostrada no app.
+const Version = "1.4.1"
 
 // Callback é implementado no lado Kotlin.
 type Callback interface {

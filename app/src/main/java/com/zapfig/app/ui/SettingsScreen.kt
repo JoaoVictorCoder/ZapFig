@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -54,8 +53,7 @@ import com.zapfig.app.ToggleTileService
 import com.zapfig.app.Updater
 import com.zapfig.app.UiState
 import com.zapfig.app.media.CropMode
-import com.zapfig.app.engine.Engine
-import com.zapfig.app.engine.EngineManager
+import com.zapfig.engine.bot.Bot
 import kotlin.concurrent.thread
 
 @Composable
@@ -181,46 +179,9 @@ fun SettingsScreen(ui: UiState, prefs: Prefs, modifier: Modifier, onLoggedOut: (
             }, modifier = Modifier.fillMaxWidth()) { Text(if (checking) "Procurando…" else "Procurar atualização agora") }
         }
 
-        Group("Bot")
-        Section {
-            var checkingEngine by remember { mutableStateOf(false) }
-            Text("Versão do bot: ${Engine.version() ?: "ainda não baixado (baixa ao ligar)"}", fontSize = 14.sp)
-            Text("O bot é baixado separado do app e se atualiza sem precisar de app novo.", color = Muted, fontSize = 13.sp)
-            val pending = ui.enginePending ?: EngineManager.pendingVersion(ctx)
-            if (pending != null) {
-                Spacer(Modifier.height(8.dp))
-                Text("Versão $pending baixada ✅", color = Green, fontSize = 14.sp)
-                Button({ com.zapfig.app.App.restart(ctx, startBot = ui.phase == com.zapfig.app.Phase.ON) },
-                    Modifier.fillMaxWidth()) { Text("Reiniciar e usar a $pending") }
-            } else if (Engine.loaded) {
-                Spacer(Modifier.height(8.dp))
-                OutlinedButton(enabled = !checkingEngine, onClick = {
-                    checkingEngine = true
-                    thread {
-                        val msg = try {
-                            val r = EngineManager.findLatest(ctx)
-                            when {
-                                r == null -> "Nenhuma versão compatível encontrada"
-                                EngineManager.compareVersions("v" + r.version, "v" + (Engine.version() ?: "0")) <= 0 -> "O bot já está na versão mais nova ✅"
-                                else -> {
-                                    EngineManager.install(ctx, r) { }
-                                    BotState.setEnginePending(r.version)
-                                    "Bot ${r.version} baixado. Reinicie para usar."
-                                }
-                            }
-                        } catch (e: Exception) { "Erro: ${e.message}" }
-                        android.os.Handler(android.os.Looper.getMainLooper()).post {
-                            checkingEngine = false
-                            Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show()
-                        }
-                    }
-                }, modifier = Modifier.fillMaxWidth()) { Text(if (checkingEngine) "Procurando…" else "Procurar atualização do bot") }
-            }
-        }
-
         Group("Sobre")
         Section {
-            Text("ZapFig ${appVersion(ctx)} • bot ${Engine.version() ?: "não baixado"}", fontSize = 14.sp)
+            Text("ZapFig ${appVersion(ctx)} • motor ${Bot.Version}", fontSize = 14.sp)
             Spacer(Modifier.height(4.dp))
             Text("Projeto independente, sem ligação com o WhatsApp ou a Meta. Tudo roda no seu celular: " +
                 "nenhuma mensagem passa por servidores do ZapFig.", color = Muted, fontSize = 13.sp)
@@ -236,7 +197,7 @@ fun SettingsScreen(ui: UiState, prefs: Prefs, modifier: Modifier, onLoggedOut: (
                 TextButton({
                     confirmLogout = false
                     thread {
-                        try { Engine.logout(ctx.filesDir.absolutePath) } catch (e: Exception) { BotState.log("Erro ao sair: ${e.message}") }
+                        try { Bot.logout(ctx.filesDir.absolutePath) } catch (e: Exception) { BotState.log("Erro ao sair: ${e.message}") }
                         BotService.stop(ctx)
                         onLoggedOut()
                     }

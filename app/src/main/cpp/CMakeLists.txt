@@ -24,7 +24,3 @@ add_subdirectory(opus EXCLUDE_FROM_ALL)
 add_library(zapfignative SHARED webpanim.c webpdecode.c oggopus.c oggopus_jni.c)
 target_link_libraries(zapfignative libwebpmux webpdemux webp opus jnigraphics log)
 target_link_options(zapfignative PRIVATE "-Wl,-z,max-page-size=16384")
-
-# Stub "libgojni.so": o motor real é baixado (ver EngineManager.kt)
-add_library(gojni SHARED gojni_stub.c)
-target_link_options(gojni PRIVATE "-Wl,-z,max-page-size=16384")

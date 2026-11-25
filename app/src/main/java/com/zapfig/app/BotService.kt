@@ -21,8 +21,7 @@ import com.zapfig.app.media.Downloader
 import com.zapfig.app.media.GifMaker
 import com.zapfig.app.media.StickerMaker
 import com.zapfig.app.ui.MainActivity
-import com.zapfig.app.engine.Engine
-import com.zapfig.app.engine.EngineManager
+import com.zapfig.engine.bot.Bot
 import com.zapfig.engine.bot.Callback
 import kotlin.concurrent.thread
 
@@ -50,7 +49,7 @@ class BotService : Service() {
         /** Reenvia pacote/autor/auto-conversão ao motor. Funciona ligado ou desligado. */
         fun pushConfig(ctx: Context) {
             val p = Prefs(ctx)
-            Engine.configure(p.pack, p.author, p.autoImage, p.autoGif, p.maxSeconds)
+            Bot.configure(p.pack, p.author, p.autoImage, p.autoGif, p.maxSeconds.toLong())
         }
     }
 
@@ -124,7 +123,7 @@ class BotService : Service() {
         }
         // ACTION_START ou reinício do sistema (intent nula)
         goForeground("Ligando…")
-        if (!BotState.running || !Engine.isRunning()) {
+        if (!BotState.running || !Bot.isRunning()) {
             BotState.setPhase(Phase.STARTING, "Ligando…")
             prefs.wantRunning = true
             pushConfig(this)
@@ -145,16 +144,13 @@ class BotService : Service() {
                         }
                     }
             thread(name = "zapfig-ytdlp") {
-                Downloader.cleanup(this)
-                Downloader.updateIfDue(this) { BotState.log(it) }
+                // yt-dlp só é preparado no primeiro /baixar (ver Downloader.fetch)
+                runCatching { Downloader.cleanup(this) }
             }
             thread(name = "zapfig-start") {
                 try {
-                    ensureEngine()
-                    pushConfig(this)
-                    Engine.start(filesDir.absolutePath, phone, callback)
-                    thread(name = "zapfig-engine-update") { checkEngineUpdate() }
-                } catch (e: Exception) {
+                    Bot.start(filesDir.absolutePath, phone, callback)
+                } catch (e: Throwable) {
                     BotState.setPhase(Phase.ERROR, e.message ?: "Erro ao ligar")
                     BotState.log("Erro: ${e.message}")
                     main.post { shutdown(keepStatus = true) }
@@ -165,52 +161,12 @@ class BotService : Service() {
         return START_STICKY
     }
 
-    /** Primeira vez: baixa o motor do bot. Depois, só carrega o que já está instalado. */
-    private fun ensureEngine() {
-        if (EngineManager.isLoaded || EngineManager.loadInstalled(this)) {
-            BotState.log("Motor ${EngineManager.loadedVersion} carregado")
-            return
-        }
-        BotState.setPhase(Phase.STARTING, "Procurando o bot…")
-        updateNotification("Baixando o bot…")
-        val r = EngineManager.findLatest(this)
-            ?: throw IllegalStateException("não achei uma versão do bot compatível com este app. Atualize o app.")
-        BotState.log("Baixando motor ${r.version} (${r.size / 1_048_576} MB)…")
-        var lastShown = -1
-        EngineManager.install(this, r) { p ->
-            if (p / 5 != lastShown) {
-                lastShown = p / 5
-                BotState.setPhase(Phase.STARTING, "Baixando o bot… $p%")
-                updateNotification("Baixando o bot… $p%")
-            }
-        }
-        if (!EngineManager.loadInstalled(this)) throw IllegalStateException("o bot baixado não pôde ser carregado")
-        BotState.log("Motor ${r.version} instalado ✅")
-        BotState.setPhase(Phase.STARTING, "Ligando…")
-    }
-
-    /** Com o bot rodando: baixa motor novo (se houver) para usar no próximo início. */
-    private fun checkEngineUpdate() {
-        try {
-            val r = EngineManager.findLatest(this) ?: return
-            if (r.version == EngineManager.loadedVersion || EngineManager.isInstalled(this, r)) return
-            if (EngineManager.compareVersions("v" + r.version, "v" + (EngineManager.loadedVersion ?: "0")) <= 0) return
-            BotState.log("Baixando atualização do bot ${r.version}…")
-            EngineManager.install(this, r) { }
-            BotState.setEnginePending(r.version)
-            BotState.log("Bot ${r.version} pronto. Reinicie o bot em Ajustes para usar.")
-            Updater.notifyEngineReady(this, r.version)
-        } catch (e: Exception) {
-            BotState.log("Não consegui verificar atualização do bot: ${e.message}")
-        }
-    }
-
     private fun refreshPaired() = thread {
-        BotState.setPaired(true, Engine.pairedNumber(filesDir.absolutePath))
+        BotState.setPaired(true, Bot.pairedNumber(filesDir.absolutePath))
     }
 
     private fun shutdown(keepStatus: Boolean) {
-        thread(name = "zapfig-stop") { Engine.stop() }
+        thread(name = "zapfig-stop") { Bot.stop() }
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
         if (keepStatus) BotState.setPhase(Phase.ERROR) else BotState.setPhase(Phase.OFF, "Desligado")
@@ -221,8 +177,8 @@ class BotService : Service() {
     }
 
     override fun onDestroy() {
-        if (Engine.isRunning()) {
-            thread { Engine.stop() }
+        if (Bot.isRunning()) {
+            thread { Bot.stop() }
             BotState.setPhase(Phase.OFF, "Desligado")
         }
         wakeLock?.let { if (it.isHeld) it.release() }

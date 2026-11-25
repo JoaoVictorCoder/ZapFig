@@ -1,9 +1,8 @@
-name: Release do app
+name: Release
 
-# Publica o APP (release v<versionName>) e, junto, um BOT compatível (engine-v*),
-# para que a primeira instalação sempre encontre um bot pra baixar.
-#  - push numa tag v*  (git tag v1.4.0 && git push origin v1.4.0)
-#  - ou Actions > Release do app > Run workflow
+# Cria um release no GitHub com os APKs assinados:
+#  - ao dar push numa tag v*            (git tag v1.2.0 && git push origin v1.2.0)
+#  - ou em Actions > Release > Run workflow (usa o versionName do app/build.gradle.kts)
 on:
   push:
     tags: ["v*"]
@@ -15,8 +14,6 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      ANDROID_NDK_VERSION: 27.2.12479018
     steps:
       - uses: actions/checkout@v4
 
@@ -32,20 +29,29 @@ jobs:
 
       - uses: android-actions/setup-android@v3
         with:
+          # o padrão tenta instalar o pacote "tools", que não existe mais
           packages: "platform-tools"
           log-accepted-android-sdk-licenses: false
 
       - name: Instalar NDK e CMake
-        run: sdkmanager "ndk;${ANDROID_NDK_VERSION}" "cmake;3.22.1" "platforms;android-35" "build-tools;35.0.0"
+        run: sdkmanager "ndk;27.2.12479018" "cmake;3.22.1" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Testes do motor
         working-directory: engine
         run: go test ./...
 
-      - name: Gerar o motor
-        run: ANDROID_NDK_HOME="$ANDROID_HOME/ndk/$ANDROID_NDK_VERSION" tools/build_engine.sh
+      - name: Gerar engine.aar (gomobile)
+        working-directory: engine
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.2.12479018
+        run: |
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          gomobile init
+          mkdir -p ../app/libs
+          gomobile bind -target=android/arm64,android/arm -androidapi 28 \
+            -javapkg=com.zapfig.engine -ldflags="-s -w" -o ../app/libs/engine.aar ./bot
 
-      - name: Chave de assinatura
+      - name: Keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.ZAPFIG_KEYSTORE_BASE64 }}
           P1: ${{ secrets.ZAPFIG_KEYSTORE_PASSWORD }}
@@ -54,13 +60,11 @@ jobs:
         run: |
           for v in KEYSTORE_BASE64 P1 P2 P3; do
             if [ -z "${!v}" ]; then
-              echo "::error::Faltam secrets: ZAPFIG_KEYSTORE_BASE64, ZAPFIG_KEYSTORE_PASSWORD, ZAPFIG_KEY_ALIAS e ZAPFIG_KEY_PASSWORD"
+              echo "::error::Faltam secrets: cadastre ZAPFIG_KEYSTORE_BASE64, ZAPFIG_KEYSTORE_PASSWORD, ZAPFIG_KEY_ALIAS e ZAPFIG_KEY_PASSWORD em Settings > Secrets and variables > Actions"
               exit 1
             fi
           done
           echo "$KEYSTORE_BASE64" | tr -d ' \n\r' | base64 -d > release.jks
-          # chave privada em PEM para assinar o manifesto do bot (a mesma chave do APK)
-          PASS="$P1" openssl pkcs12 -in release.jks -nocerts -nodes -passin env:PASS -out "$RUNNER_TEMP/key.pem"
 
       - name: Compilar APKs
         env:
@@ -72,50 +76,19 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon
 
-      - name: Versões
+      - name: Versão
         id: ver
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           V=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then T="${GITHUB_REF#refs/tags/}"; else T="v$V"; fi
           if [ "$T" != "v$V" ]; then echo "::error::Tag $T não bate com versionName $V"; exit 1; fi
-          EV=$(grep -oP 'const version = "\K[^"]+' engine/bot/bot.go)
-          API=$(python3 tools/engine_api.py app/libs/engine-sources.jar)
-          ET="engine-v$EV-$API"
           echo "tag=$T" >> "$GITHUB_OUTPUT"
-          echo "engine_version=$EV" >> "$GITHUB_OUTPUT"
-          echo "engine_tag=$ET" >> "$GITHUB_OUTPUT"
-          if gh release view "$ET" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "engine_exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "engine_exists=false" >> "$GITHUB_OUTPUT"
-          fi
 
-      - name: Empacotar o bot
-        if: steps.ver.outputs.engine_exists == 'false'
-        run: python3 tools/package_engine.py build/engine/engine-full.aar app/libs/engine-sources.jar "${{ steps.ver.outputs.engine_version }}" build/engine/out "$RUNNER_TEMP/key.pem"
-
-      - name: Publicar o bot
-        if: steps.ver.outputs.engine_exists == 'false'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.ver.outputs.engine_tag }}
-          target_commitish: ${{ github.sha }}
-          name: Bot ${{ steps.ver.outputs.engine_version }}
-          body: Motor do bot (baixado automaticamente pelo app). Não precisa instalar nada.
-          make_latest: "false"
-          files: |
-            build/engine/out/*.so.gz
-            build/engine/out/engine.json
-            build/engine/out/engine.json.sig
-
-      - name: Publicar o app
+      - name: Publicar release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.ver.outputs.tag }}
           target_commitish: ${{ github.sha }}
           name: ZapFig ${{ steps.ver.outputs.tag }}
-          make_latest: "true"
           files: app/build/outputs/apk/release/*.apk
           generate_release_notes: true

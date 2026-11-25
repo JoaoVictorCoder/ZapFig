@@ -31,7 +31,7 @@ import com.zapfig.app.BotService
 import com.zapfig.app.BotState
 import com.zapfig.app.Prefs
 import com.zapfig.app.Updater
-import com.zapfig.app.engine.Engine
+import com.zapfig.engine.bot.Bot
 import kotlin.concurrent.thread
 
 class MainActivity : ComponentActivity() {
@@ -44,11 +44,10 @@ class MainActivity : ComponentActivity() {
         prefs = Prefs(this)
         BotState.setStats(prefs.totalStickers, prefs.animatedStickers)
         BotService.pushConfig(this)
-        // Voltando de um reinício para atualizar o motor: religa o bot.
-        val sp = getSharedPreferences("zapfig", MODE_PRIVATE)
-        if (sp.getBoolean("start_after_restart", false)) {
-            sp.edit().putBoolean("start_after_restart", false).apply()
-            BotService.start(this, prefs.phone)
+        // O app fechou sozinho da última vez? Mostra o motivo na aba Log.
+        com.zapfig.app.App.takeCrashReport(this)?.let { report ->
+            BotState.log("⚠️ O app fechou sozinho da última vez:\n$report")
+            android.widget.Toast.makeText(this, "O app fechou da última vez — detalhes na aba Log", android.widget.Toast.LENGTH_LONG).show()
         }
 
         if (Build.VERSION.SDK_INT >= 33 &&
@@ -59,7 +58,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             ZapFigTheme {
                 val ui by BotState.ui.collectAsState()
-                var tab by rememberSaveable { mutableIntStateOf(intent?.getIntExtra("tab", 0) ?: 0) }
+                var tab by rememberSaveable { mutableIntStateOf(0) }
                 var accepted by remember { mutableStateOf(prefs.acceptedTerms) }
 
                 if (!accepted) {
@@ -129,7 +128,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun refreshPaired() = thread {
-        val num = try { Engine.pairedNumber(filesDir.absolutePath) } catch (e: Exception) { "" }
+        val num = try { Bot.pairedNumber(filesDir.absolutePath) } catch (e: Exception) { "" }
         BotState.setPaired(num.isNotEmpty(), num)
     }
 }
