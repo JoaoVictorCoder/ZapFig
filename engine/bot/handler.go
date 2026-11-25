@@ -230,6 +230,34 @@ func process(evt *events.Message) {
 			return
 		}
 		sendSticker(ctx, cli, evt, webp, false, nil)
+	case "testesom":
+		// Diagnóstico: manda o som convertido como mensagem de voz.
+		var media whatsmeow.DownloadableMessage
+		switch {
+		case quoted.GetVideoMessage() != nil:
+			media = quoted.GetVideoMessage()
+		case quoted.GetAudioMessage() != nil:
+			media = quoted.GetAudioMessage()
+		default:
+			reply(ctx, cli, evt, "🧪 Responda um vídeo ou áudio com /testesom")
+			return
+		}
+		raw, err := cli.Download(ctx, media)
+		if err != nil {
+			fail(ctx, cli, evt, "baixar a mídia", err)
+			return
+		}
+		a := uploadStickerAudio(ctx, cli, evt, raw, maxAudioSeconds)
+		if a == nil {
+			return
+		}
+		a.PTT = proto.Bool(true)
+		a.ContextInfo = quoteOf(evt)
+		if _, err := cli.SendMessage(ctx, evt.Info.Chat, &waE2E.Message{AudioMessage: a}); err != nil {
+			logf("Erro ao enviar teste de som: %v", err)
+			return
+		}
+		logf("Teste de som enviado (%ds, %s)", a.GetSeconds(), a.GetMimetype())
 	case "sa", "som", "audio", "áudio":
 		switch {
 		case quoted.GetVideoMessage() != nil:
@@ -463,10 +491,8 @@ func sendStickerWithAudio(ctx context.Context, cli *whatsmeow.Client, evt *event
 	st.Audio = &waE2E.StickerMessage_AudioMessage{AudioMessage: audio}
 	st.ContextInfo = quoteOf(evt)
 	st.StickerSentTS = proto.Int64(time.Now().UnixMilli())
-	// Figurinha com som vai dentro do envelope audioStickerMessage (campo 134).
-	msg := &waE2E.Message{AudioStickerMessage: &waE2E.FutureProofMessage{
-		Message: &waE2E.Message{StickerMessage: st},
-	}}
+	// StickerMessage comum com o áudio no campo 26 (igual aos bots que já funcionam).
+	msg := &waE2E.Message{StickerMessage: st}
 	if _, err := cli.SendMessage(ctx, evt.Info.Chat, msg); err != nil {
 		logf("Erro ao enviar figurinha com som: %v", err)
 		reply(ctx, cli, evt, "❌ Não consegui enviar a figurinha com som.")
