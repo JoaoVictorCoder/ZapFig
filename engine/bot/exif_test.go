@@ -107,3 +107,32 @@ func TestFindURL(t *testing.T) {
 		t.Error("shortErr")
 	}
 }
+
+func TestPackPlanAndArgs(t *testing.T) {
+	st, tr := segmentPlan(20_000, 6_000, 30)
+	if len(st) != 4 || tr { // 0,6,12,18 (sobra de 2s vira a 4ª)
+		t.Errorf("plan 20s/6s = %v %v", st, tr)
+	}
+	st, _ = segmentPlan(18_500, 6_000, 30) // sobra de 0,5s é descartada
+	if len(st) != 3 {
+		t.Errorf("plan 18.5s/6s = %v", st)
+	}
+	st, tr = segmentPlan(600_000, 6_000, 30)
+	if len(st) != 30 || !tr {
+		t.Errorf("limite: %d %v", len(st), tr)
+	}
+	o := parsePackArgs("4 quadrado Memes do Zé", 6)
+	if o.seconds != 4 || o.fit != "stretch" || o.name != "Memes do Zé" {
+		t.Errorf("%+v", o)
+	}
+	o = parsePackArgs("", 6)
+	if o.seconds != 6 || o.fit != "" || o.name != "" {
+		t.Errorf("%+v", o)
+	}
+	if o := parsePackArgs("20s", 6); o.seconds != 8 {
+		t.Errorf("máx 8s: %+v", o)
+	}
+	if fmtDur(83_000) != "1:23" {
+		t.Error(fmtDur(83_000))
+	}
+}

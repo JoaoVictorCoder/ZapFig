@@ -19,7 +19,7 @@ import (
 )
 
 // Version do motor, mostrada no app.
-const Version = "1.4.1"
+const Version = "1.5.0"
 
 // Callback é implementado no lado Kotlin.
 type Callback interface {

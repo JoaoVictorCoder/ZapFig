@@ -22,16 +22,21 @@ object AudioExtractor {
         val input = File.createTempFile("snd", ".bin", cacheDir)
         try {
             input.writeBytes(media)
-            val pcm = decodeMono(input, maxSeconds) ?: return ByteArray(0)
-            if (pcm.first.isEmpty()) return ByteArray(0)
-            return OpusOgg.encode(resample(pcm.first, pcm.second, RATE))
+            return fileToOggOpus(input, 0L, maxSeconds * 1000L)
         } finally {
             input.delete()
         }
     }
 
+    /** Som de um trecho: de [startMs], durando [lenMs]. Vazio se não houver áudio. */
+    fun fileToOggOpus(file: File, startMs: Long, lenMs: Long): ByteArray {
+        val pcm = decodeMono(file, startMs * 1000, lenMs * 1000) ?: return ByteArray(0)
+        if (pcm.first.isEmpty()) return ByteArray(0)
+        return OpusOgg.encode(resample(pcm.first, pcm.second, RATE))
+    }
+
     /** Decodifica para PCM mono 16 bits. Devolve (amostras, taxa) ou null se não houver trilha de áudio. */
-    private fun decodeMono(file: File, maxSeconds: Int): Pair<ShortArray, Int>? {
+    private fun decodeMono(file: File, startUs: Long, lenUs: Long): Pair<ShortArray, Int>? {
         val ex = MediaExtractor()
         try {
             ex.setDataSource(file.absolutePath)
@@ -40,6 +45,7 @@ object AudioExtractor {
             } ?: return null
             val fmt = ex.getTrackFormat(track)
             ex.selectTrack(track)
+            if (startUs > 0) ex.seekTo(startUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
             val dec = MediaCodec.createDecoderByType(fmt.getString(MediaFormat.KEY_MIME)!!)
             dec.configure(fmt, null, null, 0)
             dec.start()
@@ -47,7 +53,8 @@ object AudioExtractor {
             var rate = fmt.getInteger(MediaFormat.KEY_SAMPLE_RATE)
             var channels = fmt.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
             var isFloat = false
-            val maxUs = maxSeconds * 1_000_000L
+            val maxUs = startUs + lenUs
+            var firstPts = -1L   // início real (pts) do primeiro bloco guardado
             val out = ShortList()
             val info = MediaCodec.BufferInfo()
             var inputDone = false
@@ -82,7 +89,9 @@ object AudioExtractor {
                     o >= 0 -> {
                         val buf = dec.getOutputBuffer(o)!!.order(ByteOrder.nativeOrder())
                         buf.position(info.offset); buf.limit(info.offset + info.size)
-                        if (info.presentationTimeUs <= maxUs) {
+                        // guarda só blocos que tocam o trecho [startUs, maxUs] (com folga de 100 ms antes)
+                        if (info.presentationTimeUs <= maxUs && info.presentationTimeUs >= startUs - 100_000) {
+                            if (firstPts < 0) firstPts = info.presentationTimeUs
                             if (isFloat) {
                                 val fb = buf.asFloatBuffer()
                                 while (fb.remaining() >= channels) {
@@ -105,8 +114,12 @@ object AudioExtractor {
                 }
             }
             dec.stop(); dec.release()
-            // corta exatamente na duração máxima
-            return Pair(out.toArray().let { if (it.size > rate * maxSeconds) it.copyOf(rate * maxSeconds) else it }, rate)
+            // corta exatamente no trecho pedido
+            val all = out.toArray()
+            val skip = if (firstPts in 0 until startUs) ((startUs - firstPts) * rate / 1_000_000L).toInt() else 0
+            val want = (lenUs * rate / 1_000_000L).toInt()
+            val from = skip.coerceAtMost(all.size)
+            return Pair(all.copyOfRange(from, minOf(all.size, from + want)), rate)
         } finally {
             ex.release()
         }

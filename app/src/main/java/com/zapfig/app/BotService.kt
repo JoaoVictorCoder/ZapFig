@@ -18,6 +18,7 @@ import android.service.quicksettings.TileService
 import com.zapfig.app.media.AudioExtractor
 import com.zapfig.app.media.CropMode
 import com.zapfig.app.media.Downloader
+import com.zapfig.app.media.MediaCache
 import com.zapfig.app.media.GifMaker
 import com.zapfig.app.media.StickerMaker
 import com.zapfig.app.ui.MainActivity
@@ -94,6 +95,17 @@ class BotService : Service() {
             val opt = StickerMaker.Options(crop, prefs.fps, prefs.maxSeconds)
             return when (op) {
                 "image" -> maker.image(data!!, opt)
+                // Trechos de um vídeo guardado no cache (pack de figurinhas)
+                "prepare" -> MediaCache.put(this@BotService, data!!).toByteArray()
+                "duration" -> maker.durationMs(MediaCache.get(this@BotService, arg)).toString().toByteArray()
+                "release" -> { MediaCache.remove(this@BotService, arg); ByteArray(0) }
+                "segment" -> MediaCache.args(arg).let { a ->
+                    maker.videoFile(MediaCache.get(this@BotService, a["id"]!!), a["start"]!!.toLong(), a["len"]!!.toLong(),
+                        opt.copy(crop = if (a["fit"] == "stretch") CropMode.STRETCH else opt.crop))
+                }
+                "segaudio" -> MediaCache.args(arg).let { a ->
+                    AudioExtractor.fileToOggOpus(MediaCache.get(this@BotService, a["id"]!!), a["start"]!!.toLong(), a["len"]!!.toLong())
+                }
                 "video" -> maker.video(data!!, opt)
                 "text" -> maker.text(arg)
                 "toimage" -> maker.toImage(data!!)
@@ -146,6 +158,7 @@ class BotService : Service() {
             thread(name = "zapfig-ytdlp") {
                 // yt-dlp só é preparado no primeiro /baixar (ver Downloader.fetch)
                 runCatching { Downloader.cleanup(this) }
+                runCatching { MediaCache.clear(this) }
             }
             thread(name = "zapfig-start") {
                 try {

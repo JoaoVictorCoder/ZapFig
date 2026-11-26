@@ -37,6 +37,7 @@ private val commands = listOf(
     Triple("🎬", "Vídeo com legenda /s", "Vira figurinha animada com os primeiros segundos."),
     Triple("🔊", "Vídeo com legenda /sa", "Figurinha animada com o som do vídeo (figurinha com áudio)."),
     Triple("🎵", "Responder um áudio com /sa", "Coloca aquele áudio na última figurinha que você fez."),
+    Triple("✂️", "Vídeo longo com /sapack", "Corta em várias figurinhas animadas, cada uma com o som do trecho. /sapack 4 = 4 s cada; /sapack 5 Nome = nome do pacote; /spack = sem som."),
     Triple("📐", "Legenda /s2", "Figurinha esticada num quadrado perfeito, sem bordas transparentes."),
     Triple("↩️", "Responder com /s ou /s2", "Responda qualquer foto ou vídeo da conversa para converter."),
     Triple("🖼️", "Responder figurinha com /img", "Vira imagem. Se a figurinha for animada, vira GIF."),

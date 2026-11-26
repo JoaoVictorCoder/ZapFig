@@ -11,11 +11,12 @@ import (
 
 // stickerExif monta o bloco EXIF que o WhatsApp lê para mostrar
 // "nome do pacote • autor" na figurinha.
-func stickerExif(pack, author string) []byte {
-	id := make([]byte, 8)
-	_, _ = rand.Read(id)
+func stickerExif(pack, author, packID string) []byte {
+	if packID == "" {
+		packID = newPackID()
+	}
 	meta, _ := json.Marshal(map[string]any{
-		"sticker-pack-id":        "zapfig." + hex.EncodeToString(id),
+		"sticker-pack-id":        packID,
 		"sticker-pack-name":      pack,
 		"sticker-pack-publisher": author,
 		"emojis":                 []string{""},
@@ -77,7 +78,18 @@ func simpleInfo(c riffChunk) (w, h int, alpha bool, err error) {
 func put24(b []byte, v int) { b[0], b[1], b[2] = byte(v), byte(v>>8), byte(v>>16) }
 
 // addStickerExif grava pacote/autor dentro do WebP (estático ou animado).
+// newPackID gera um id de pacote; figurinhas com o mesmo id ficam no mesmo pacote.
+func newPackID() string {
+	id := make([]byte, 8)
+	_, _ = rand.Read(id)
+	return "zapfig." + hex.EncodeToString(id)
+}
+
 func addStickerExif(webp []byte, pack, author string) ([]byte, error) {
+	return addStickerExifID(webp, pack, author, "")
+}
+
+func addStickerExifID(webp []byte, pack, author, packID string) ([]byte, error) {
 	chunks, err := parseWebP(webp)
 	if err != nil {
 		return nil, err
@@ -117,7 +129,7 @@ func addStickerExif(webp []byte, pack, author string) ([]byte, error) {
 			write(c)
 		}
 	}
-	write(riffChunk{"EXIF", stickerExif(pack, author)})
+	write(riffChunk{"EXIF", stickerExif(pack, author, packID)})
 	res := out.Bytes()
 	binary.LittleEndian.PutUint32(res[4:8], uint32(len(res)-8))
 	return res, nil

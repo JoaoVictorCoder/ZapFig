@@ -103,6 +103,8 @@ const helpText = `🧩 *ZapFig: comandos*
 
 🔊 Vídeo com legenda */sa* → figurinha animada *com o som* do vídeo
 🎵 Responda um áudio com */sa* → coloca o som na última figurinha
+✂️ Vídeo longo com */sapack* → vira várias figurinhas com som
+   (*/sapack 4* = 4s cada • */sapack 5 Nome* = nome do pacote • */spack* = sem som)
 📐 Legenda */s2* → figurinha esticada, quadrado perfeito (sem bordas)
 ↩️ Responda uma foto/vídeo com */s* ou */s2* → converte
 ↩️ Responda uma figurinha com */img* → vira imagem (ou GIF, se for animada)
@@ -192,6 +194,10 @@ func process(evt *events.Message) {
 		if isCmd && cmd == "n" {
 			return
 		}
+		if _, ok := isPackCmd(cmd); isCmd && ok {
+			startPack(cli, evt, v, cmd, captionArg(v.GetCaption()))
+			return
+		}
 		if fit, ok := fitFor(cmd); isCmd && ok {
 			job := videoJob(v, fit)
 			job.sound = isSoundCmd(cmd)
@@ -214,6 +220,12 @@ func process(evt *events.Message) {
 	}
 
 	switch cmd {
+	case "sapack", "packsom", "fatiar", "spack", "packmudo":
+		if quoted.GetVideoMessage() == nil {
+			reply(ctx, cli, evt, "✂️ Mande um vídeo com a legenda /"+cmd+" ou responda um vídeo com /"+cmd)
+			return
+		}
+		startPack(cli, evt, quoted.GetVideoMessage(), cmd, arg)
 	case "baixar", "b", "dl", "video", "vídeo", "mp3", "musica", "música":
 		// Fora da fila das figurinhas: um download por vez, sem travar o resto.
 		go func() {

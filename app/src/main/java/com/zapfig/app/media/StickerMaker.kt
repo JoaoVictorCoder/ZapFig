@@ -57,19 +57,40 @@ class StickerMaker(private val ctx: Context) {
 
     fun video(input: ByteArray, opt: Options): ByteArray {
         val tmp = File.createTempFile("vid", ".mp4", ctx.cacheDir)
-        val frames = ArrayList<Bitmap>()
         try {
             tmp.writeBytes(input)
+            return videoFile(tmp, 0L, opt.maxSeconds * 1000L, opt)
+        } finally {
+            tmp.delete()
+        }
+    }
+
+    /** Duração do vídeo em ms. */
+    fun durationMs(file: File): Long {
+        val r = MediaMetadataRetriever()
+        try {
+            r.setDataSource(file.absolutePath)
+            return r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+        } finally {
+            r.release()
+        }
+    }
+
+    /** Figurinha animada de um trecho do vídeo: de [startMs], durando até [lenMs]. */
+    fun videoFile(file: File, startMs: Long, lenMs: Long, opt: Options): ByteArray {
+        val frames = ArrayList<Bitmap>()
+        try {
             val r = MediaMetadataRetriever()
             try {
-                r.setDataSource(tmp.absolutePath)
+                r.setDataSource(file.absolutePath)
                 val durMs = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
                 if (durMs <= 0) throw IllegalArgumentException("Vídeo sem duração")
-                val useMs = minOf(durMs, opt.maxSeconds * 1000L)
+                if (startMs >= durMs) throw IllegalArgumentException("Trecho fora do vídeo")
+                val useMs = minOf(durMs - startMs, lenMs, 8_000L)
                 val stepMs = 1000L / opt.fps
                 var t = 0L
                 while (t < useMs) {
-                    val f = r.getScaledFrameAtTime(t * 1000, MediaMetadataRetriever.OPTION_CLOSEST, SIZE * 2, SIZE * 2)
+                    val f = r.getScaledFrameAtTime((startMs + t) * 1000, MediaMetadataRetriever.OPTION_CLOSEST, SIZE * 2, SIZE * 2)
                     if (f != null) {
                         val c = Bitmap.createBitmap(SIZE, SIZE, Bitmap.Config.ARGB_8888)
                         drawInto(c, f, opt.crop)
@@ -99,7 +120,6 @@ class StickerMaker(private val ctx: Context) {
             return last ?: throw IllegalStateException("Falha ao codificar")
         } finally {
             frames.forEach { it.recycle() }
-            tmp.delete()
         }
     }
 
